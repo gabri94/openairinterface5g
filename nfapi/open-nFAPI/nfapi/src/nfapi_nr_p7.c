@@ -262,6 +262,11 @@ int nfapi_nr_p7_message_pack(void *pMessageBuf, void *pPackedBuf, uint32_t packe
       result = pack_ul_dci_request(pMessageHeader, &pWritePackedMessage, end);
       break;
 
+    case NFAPI_NR_PHY_MSG_TYPE_DL_BFW_CVI_REQUEST:
+    case NFAPI_NR_PHY_MSG_TYPE_UL_BFW_CVI_REQUEST:
+      result = pack_bfw_cvi_request(pMessageHeader, &pWritePackedMessage, end);
+      break;
+
     case NFAPI_NR_PHY_MSG_TYPE_SLOT_INDICATION:
       result = pack_nr_slot_indication(pMessageHeader, &pWritePackedMessage, end);
       break;
@@ -628,6 +633,11 @@ bool nfapi_nr_p7_message_unpack(void *pMessageBuf,
     case NFAPI_NR_PHY_MSG_TYPE_UL_DCI_REQUEST:
       if (check_nr_fapi_unpack_length(NFAPI_NR_PHY_MSG_TYPE_UL_DCI_REQUEST, unpackedBufLen))
         result = unpack_ul_dci_request(&pReadPackedMessage, end, pMessageHeader);
+      break;
+    case NFAPI_NR_PHY_MSG_TYPE_DL_BFW_CVI_REQUEST:
+    case NFAPI_NR_PHY_MSG_TYPE_UL_BFW_CVI_REQUEST:
+      if (check_nr_fapi_unpack_length(pMessageHeader->message_id, unpackedBufLen))
+        result = unpack_bfw_cvi_request(&pReadPackedMessage, end, pMessageHeader);
       break;
     case NFAPI_NR_PHY_MSG_TYPE_SLOT_INDICATION:
       if (check_nr_fapi_unpack_length(NFAPI_NR_PHY_MSG_TYPE_SLOT_INDICATION, unpackedBufLen)) {
