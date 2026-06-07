@@ -1574,6 +1574,25 @@ void handle_nr_srs_measurements(const module_id_t module_id,
                                                  &nr_srs_channel_iq_matrix,
                                                  sizeof(nfapi_nr_srs_normalized_channel_iq_matrix_t));
 
+      {
+        /* normalized_iq_representation: 0 -> c8_t (2 bytes), 1 -> c16_t (4 bytes) */
+        const int iq_bytes = (nr_srs_channel_iq_matrix.normalized_iq_representation == 0) ? sizeof(c8_t) : sizeof(c16_t);
+        const int matrix_bytes = nr_srs_channel_iq_matrix.num_ue_srs_ports
+                                 * nr_srs_channel_iq_matrix.num_gnb_antenna_elements
+                                 * nr_srs_channel_iq_matrix.num_prgs
+                                 * iq_bytes;
+        T(T_GNB_MAC_SRS_CHANNEL_MATRIX,
+          T_INT(srs_ind->rnti),
+          T_INT(frame),
+          T_INT(slot),
+          T_INT(nr_srs_channel_iq_matrix.normalized_iq_representation),
+          T_INT(nr_srs_channel_iq_matrix.num_gnb_antenna_elements),
+          T_INT(nr_srs_channel_iq_matrix.num_ue_srs_ports),
+          T_INT(nr_srs_channel_iq_matrix.num_prgs),
+          T_INT(nr_srs_channel_iq_matrix.prg_size),
+          T_BUFFER(nr_srs_channel_iq_matrix.channel_matrix, matrix_bytes));
+      }
+
 #ifdef SRS_IND_DEBUG
       LOG_I(NR_MAC, "nr_srs_channel_iq_matrix.normalized_iq_representation = %i\n", nr_srs_channel_iq_matrix.normalized_iq_representation);
       LOG_I(NR_MAC, "nr_srs_channel_iq_matrix.num_gnb_antenna_elements = %i\n", nr_srs_channel_iq_matrix.num_gnb_antenna_elements);
