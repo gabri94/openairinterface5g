@@ -730,31 +730,38 @@ static void config_common(nr_cell_sched_t *cell, const nr_mac_config_t *config, 
   cfg->carrier_config.num_rx_ant.value = pusch_AntennaPorts * cell->beam_info.beams_per_period;
   AssertFatal(pusch_AntennaPorts > 0 && pusch_AntennaPorts < 13, "pusch_AntennaPorts in 1...12\n");
   cfg->carrier_config.num_rx_ant.tl.tag = NFAPI_NR_CONFIG_NUM_RX_ANT_TAG;
-  LOG_I(NR_MAC,
-        "Set TX antenna number to %d, Set RX antenna number to %d (num ssb %d: %x,%x)\n",
-        cfg->carrier_config.num_tx_ant.value,
-        cfg->carrier_config.num_rx_ant.value,
-        num_ssb,
-        cfg->ssb_table.ssb_mask_list[0].ssb_mask.value,
-        cfg->ssb_table.ssb_mask_list[1].ssb_mask.value);
-  AssertFatal(cfg->carrier_config.num_tx_ant.value > 0,
-              "carrier_config.num_tx_ant.value %d!\n",
-              cfg->carrier_config.num_tx_ant.value);
   cfg->num_tlv++;
   cfg->num_tlv++;
-#ifdef ENABLE_AERIAL
-  if (cell->beam_info.beam_mode == PRECONFIGURED_BEAM_IDX) {
-    // if we are doing BF in Aerial we need these Custom TLV
-    cfg->carrier_config.num_rx_ant.value = 64; //TOOD: Read number of baseband ports (phy ant) from Config?
-    cfg->carrier_config.num_tx_ant.value = 64; //TOOD: Read number of baseband ports (phy ant) from Config? 
-  }else{
-    // In CAT-A Mode these are equal to num_rx_ant (and Aerial ignores the value)
-    cfg->carrier_config.num_rx_port.value = pusch_AntennaPorts;
-    cfg->carrier_config.num_rx_port.tl.tag = NFAPI_NR_CONFIG_NUM_RX_PORT_TAG;
-    cfg->carrier_config.num_tx_port.value = num_pdsch_antenna_ports;
-    cfg->carrier_config.num_tx_port.tl.tag = NFAPI_NR_CONFIG_NUM_TX_PORT_TAG;
-  }
-#endif
+cfg->carrier_config.num_tx_ant.value = 32;
+cfg->carrier_config.num_rx_ant.value = 32;
+cfg->carrier_config.num_rx_port.value = pusch_AntennaPorts;
+cfg->carrier_config.num_rx_port.tl.tag = NFAPI_NR_CONFIG_NUM_RX_PORT_TAG;
+cfg->carrier_config.num_tx_port.value = num_pdsch_antenna_ports;
+cfg->carrier_config.num_tx_port.tl.tag = NFAPI_NR_CONFIG_NUM_TX_PORT_TAG;
+//cfg->num_tlv++;
+//cfg->num_tlv++;
+
+// #ifdef ENABLE_AERIAL
+//   if (nrmac->beam_info.beam_mode == LOPHY_BEAM_IDX) {
+//     // if we are doing BF in Aerial we need these Custom TLV
+//     cfg->carrier_config.num_rx_ant.value = 64; //TOOD: Read number of baseband ports (phy ant) from Config?
+//     cfg->carrier_config.num_tx_ant.value = 64; //TOOD: Read number of baseband ports (phy ant) from Config? 
+//   }else{
+//     // In CAT-A Mode these are equal to num_rx_ant (and Aerial ignores the value)
+//     cfg->carrier_config.num_rx_port.value = pusch_AntennaPorts;
+//     cfg->carrier_config.num_rx_port.tl.tag = NFAPI_NR_CONFIG_NUM_RX_PORT_TAG;
+//     cfg->carrier_config.num_tx_port.value = num_pdsch_antenna_ports;
+//     cfg->carrier_config.num_tx_port.tl.tag = NFAPI_NR_CONFIG_NUM_TX_PORT_TAG;
+//   }
+//   LOG_I(NR_MAC,
+//     "Set TX antenna number to %d, Set RX antenna number to %d (num ssb %d: %x,%x)\n",
+//     cfg->carrier_config.num_tx_ant.value,
+//     cfg->carrier_config.num_rx_ant.value,
+//     num_ssb,
+//     cfg->ssb_table.ssb_mask_list[0].ssb_mask.value,
+//     cfg->ssb_table.ssb_mask_list[1].ssb_mask.value);
+//   AssertFatal(cfg->carrier_config.num_tx_ant.value > 0, "carrier_config.num_tx_ant.value %d!\n", cfg->carrier_config.num_tx_ant.value);
+// #endif
   // Frame structure configuration
   uint8_t mu = frequencyInfoUL->scs_SpecificCarrierList.list.array[0]->subcarrierSpacing;
   if (cfg->cell_config.frame_duplex_type.value == TDD) {
