@@ -226,6 +226,11 @@ typedef struct nr_mac_config_s {
   /// Sized to the max number of physical RU antenna ports, NOT to be confused
   /// with MAX_NUM_SPATIAL_STREAMS, which bounds the per-PDU NFAPI wire field.
   uint16_t spatial_stream_index[NR_MAC_MAX_RU_ANTENNA_PORTS];
+  /// Aerial-specific: per-cell SRS channel-estimate buffer pool size. Sent
+  /// to cuPHY via the vendor TLV NFAPI_NR_CONFIG_NUM_SRS_CHEST_BUFFERS_TAG
+  /// to size the pool used for dynamic-BFW SRS reuse. Default to 0 means
+  /// "let cuPHY pick its built-in default".
+  uint32_t num_srs_chest_buffers;
 } nr_mac_config_t;
 
 typedef struct NR_preamble_ue {

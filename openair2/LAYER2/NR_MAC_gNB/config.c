@@ -745,7 +745,7 @@ cfg->carrier_config.num_tx_port.tl.tag = NFAPI_NR_CONFIG_NUM_TX_PORT_TAG;
 //   if (nrmac->beam_info.beam_mode == LOPHY_BEAM_IDX) {
 //     // if we are doing BF in Aerial we need these Custom TLV
 //     cfg->carrier_config.num_rx_ant.value = 64; //TOOD: Read number of baseband ports (phy ant) from Config?
-//     cfg->carrier_config.num_tx_ant.value = 64; //TOOD: Read number of baseband ports (phy ant) from Config? 
+//     cfg->carrier_config.num_tx_ant.value = 64; //TOOD: Read number of baseband ports (phy ant) from Config?
 //   }else{
 //     // In CAT-A Mode these are equal to num_rx_ant (and Aerial ignores the value)
 //     cfg->carrier_config.num_rx_port.value = pusch_AntennaPorts;
@@ -762,6 +762,15 @@ cfg->carrier_config.num_tx_port.tl.tag = NFAPI_NR_CONFIG_NUM_TX_PORT_TAG;
 //     cfg->ssb_table.ssb_mask_list[1].ssb_mask.value);
 //   AssertFatal(cfg->carrier_config.num_tx_ant.value > 0, "carrier_config.num_tx_ant.value %d!\n", cfg->carrier_config.num_tx_ant.value);
 // #endif
+#ifdef ENABLE_AERIAL
+  // Reserve a per-cell pool of SRS channel-estimate buffers so cuPHY can
+  // cache estimates for dynamic-BFW weight requests. The value range is
+  // 0..1023; cuPHY enforces an upper bound (MAX_SRS_CHEST_BUFFERS_PER_CELL
+  // on its side) and falls back to a default if the TLV is absent.
+  cfg->carrier_config.num_srs_chest_buffers.value = config->num_srs_chest_buffers;
+  cfg->carrier_config.num_srs_chest_buffers.tl.tag = NFAPI_NR_CONFIG_NUM_SRS_CHEST_BUFFERS_TAG;
+  cfg->num_tlv++;
+#endif
   // Frame structure configuration
   uint8_t mu = frequencyInfoUL->scs_SpecificCarrierList.list.array[0]->subcarrierSpacing;
   if (cfg->cell_config.frame_duplex_type.value == TDD) {

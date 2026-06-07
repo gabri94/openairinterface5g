@@ -34,6 +34,12 @@ int oai_fapi_ul_tti_req(nfapi_nr_ul_tti_request_t *ul_tti_req);
 int oai_fapi_ul_dci_req(nfapi_nr_ul_dci_request_t *ul_dci_req);
 int oai_fapi_tx_data_req(nfapi_nr_tx_data_request_t *tx_data_req);
 int oai_fapi_dl_tti_req(nfapi_nr_dl_tti_request_t *dl_config_req);
+// Aerial vendor: dynamic-BFW weight requests (msg IDs 0x90 / 0x91). MAC builds
+// the request and calls these one slot before the matching PDSCH / PUSCH; cuPHY
+// then computes BFW from the SRS chest buffer indicated by each ue_list entry's
+// `handle` (bits 8..23).
+int oai_fapi_dl_bfw_cvi_req(nfapi_nr_bfw_cvi_request_t *req);
+int oai_fapi_ul_bfw_cvi_req(nfapi_nr_bfw_cvi_request_t *req);
 void nvIPC_Stop();
 void nvIPC_send_stop_request();
 #endif // OPENAIRINTERFACE_FAPI_NVIPC_H

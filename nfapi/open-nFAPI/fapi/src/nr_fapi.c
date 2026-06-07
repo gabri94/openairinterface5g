@@ -105,6 +105,12 @@ int check_nr_fapi_unpack_length(nfapi_nr_phy_msg_type_e msgId, uint32_t unpacked
         retLen = sizeof(nfapi_nr_ul_dci_request_t);
       break;
 
+    case NFAPI_NR_PHY_MSG_TYPE_DL_BFW_CVI_REQUEST:
+    case NFAPI_NR_PHY_MSG_TYPE_UL_BFW_CVI_REQUEST:
+      if (unpackedBufLen >= sizeof(nfapi_nr_bfw_cvi_request_t))
+        retLen = sizeof(nfapi_nr_bfw_cvi_request_t);
+      break;
+
     case NFAPI_NR_PHY_MSG_TYPE_TX_DATA_REQUEST:
       if (unpackedBufLen >= sizeof(nfapi_nr_tx_data_request_t))
         retLen = sizeof(nfapi_nr_tx_data_request_t);

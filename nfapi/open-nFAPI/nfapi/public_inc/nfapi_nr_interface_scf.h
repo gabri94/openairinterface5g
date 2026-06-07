@@ -63,6 +63,11 @@ typedef enum {
   NFAPI_NR_PHY_MSG_TYPE_RACH_INDICATION = 0X89,
   // RESERVED 0X8a ~ 0xff
   NFAPI_NR_PHY_MSG_TYPE_VENDOR_EXT_SLOT_RESPONSE = 0x8F, // Aerial-specfiic
+  // Aerial-specific vendor messages for dynamic beamforming weight computation.
+  // L2 sends one of these one slot before the matching data slot so cuPHY can
+  // compute BFW from the cached SRS channel estimate identified by `handle`.
+  NFAPI_NR_PHY_MSG_TYPE_DL_BFW_CVI_REQUEST = 0x90,
+  NFAPI_NR_PHY_MSG_TYPE_UL_BFW_CVI_REQUEST = 0x91,
 
   NFAPI_NR_PHY_MSG_TYPE_PNF_PARAM_REQUEST = 0x0100,
   NFAPI_NR_PHY_MSG_TYPE_PNF_PARAM_RESPONSE = 0x0101,
@@ -325,7 +330,10 @@ typedef struct
 #ifdef ENABLE_AERIAL
   #define NFAPI_NR_CONFIG_NUM_TX_PORT_TAG 0xA016
   #define NFAPI_NR_CONFIG_NUM_RX_PORT_TAG 0xA017
-  #define NFAPI_NR_CONFIG_BEAMFORMING_TABLE_TAG 0xA010 
+  #define NFAPI_NR_CONFIG_BEAMFORMING_TABLE_TAG 0xA010
+  // Aerial vendor TLV (SCF_FAPI_10_04): per-cell SRS channel-estimate buffer pool size.
+  // Value is uint32_t in the 0..1023 range; required to enable dynamic-BFW SRS reuse.
+  #define NFAPI_NR_CONFIG_NUM_SRS_CHEST_BUFFERS_TAG 0xA019
 #else
   #define NFAPI_NR_CONFIG_BEAMFORMING_TABLE_TAG 0x1043 // This tag was added in version 5 of the SCF222 standard ( Table 3-50 of SCF222.10.05 )
 #endif
@@ -346,8 +354,12 @@ typedef struct
   nfapi_uint8_tlv_t  frequency_shift_7p5khz;//Indicates presence of 7.5KHz frequency shift. Value: 0 = false 1 = true
   nfapi_uint16_tlv_t num_tx_port; //used by Aerial L1 when BF mode is enabled to signal the number of logical antenna ports
   nfapi_uint16_tlv_t num_rx_port; //used by Aerial L1 when BF mode is enabled to signal the number of logical antenna ports
+  // Aerial vendor TLV (tag 0xA019): per-cell SRS channel-estimate buffer pool size.
+  // Value range 0..1023; required by cuPHY for dynamic-BFW SRS reuse. Ignored
+  // by non-Aerial L1s.
+  nfapi_uint32_tlv_t num_srs_chest_buffers;
 
-} nfapi_nr_carrier_config_t; 
+} nfapi_nr_carrier_config_t;
 
 //table 3-22
 typedef struct 
@@ -2044,5 +2056,48 @@ typedef struct
   nfapi_nr_prach_indication_pdu_t* pdu_list;
 
 } nfapi_nr_rach_indication_t;
+
+// 3.4.13 dl/ul bfw_cvi_request - Aerial vendor extension (SCF_FAPI_10_04)
+//
+// L2 sends one DL_BFW_CVI_REQUEST (0x90) and/or UL_BFW_CVI_REQUEST (0x91) one
+// slot before the matching PDSCH / PUSCH slot. cuPHY uses the SRS chest buffer
+// identified by `handle` (bits 8..23 of a 32-bit value) to compute beamforming
+// weights for the listed UE groups. The corresponding SRS.INDICATION for that
+// buffer index must already have been received before L2 issues a BFW request
+// referencing it, otherwise cuPHY drops the request.
+//
+// The DL and UL requests share the same on-the-wire layout; only the message
+// type (0x90 / 0x91) distinguishes the two.
+
+#define NFAPI_NR_MAX_BFW_CVI_GROUPS         16   // max group config PDUs per request
+#define NFAPI_NR_MAX_BFW_CVI_UES_PER_GROUP  12   // max UEs in one BFW group (MU-MIMO ceiling)
+#define NFAPI_NR_MAX_BFW_CVI_UE_ANTS         4   // max UE-antenna indices per UE entry
+
+typedef struct {
+  uint16_t rnti;                                            // C-RNTI of the UE
+  uint32_t handle;                                          // bits 8..23 = SRS chest buffer index; other bits reserved (0)
+  uint16_t pdu_idx;                                         // matching PDU index in DL_TTI.req / UL_TTI.req
+  uint8_t  gnb_ant_idx_start;                               // first gNB antenna index covered by this UE
+  uint8_t  gnb_ant_idx_end;                                 // last gNB antenna index covered by this UE
+  uint8_t  num_ue_ants;                                     // 1..NFAPI_NR_MAX_BFW_CVI_UE_ANTS
+  uint8_t  ue_ant_idx[NFAPI_NR_MAX_BFW_CVI_UE_ANTS];        // selected UE-antenna indices
+} nfapi_nr_bfw_cvi_ue_config_t;
+
+typedef struct {
+  uint16_t rb_start;                                                  // RB start within carrier
+  uint16_t rb_size;                                                   // number of RBs covered
+  uint16_t num_prgs;                                                  // number of PRGs in this group
+  uint16_t prg_size;                                                  // RBs per PRG
+  uint8_t  num_ues;                                                   // 1..NFAPI_NR_MAX_BFW_CVI_UES_PER_GROUP
+  nfapi_nr_bfw_cvi_ue_config_t ue_list[NFAPI_NR_MAX_BFW_CVI_UES_PER_GROUP];
+} nfapi_nr_bfw_cvi_group_config_t;
+
+typedef struct {
+  nfapi_nr_p7_message_header_t header;
+  uint16_t sfn;                                                       // 0..1023
+  uint16_t slot;                                                      // 0..159
+  uint8_t  num_groups;                                                // 0..NFAPI_NR_MAX_BFW_CVI_GROUPS
+  nfapi_nr_bfw_cvi_group_config_t group_list[NFAPI_NR_MAX_BFW_CVI_GROUPS];
+} nfapi_nr_bfw_cvi_request_t;
 
 #endif

@@ -488,6 +488,41 @@ int oai_fapi_dl_tti_req(nfapi_nr_dl_tti_request_t *dl_config_req)
   return retval;
 }
 
+// Aerial vendor: send a dynamic-BFW DL weight-compute request (msg ID 0x90).
+// L2 must call this one slot before the matching PDSCH slot, and the SRS chest
+// buffer referenced by each ue_list[].handle must already have its SRS.IND
+// delivered, otherwise cuPHY drops the request.
+int oai_fapi_dl_bfw_cvi_req(nfapi_nr_bfw_cvi_request_t *req)
+{
+  nfapi_vnf_p7_config_t *p7_config = get_p7_nr_vnf_config();
+  req->header.message_id = NFAPI_NR_PHY_MSG_TYPE_DL_BFW_CVI_REQUEST;
+
+  bool retval = p7_config->send_p7_msg(get_p7_nr_vnf(), &req->header);
+  if (!retval) {
+    LOG_E(PHY, "%s() Problem sending retval:%d\n", __FUNCTION__, retval);
+  } else {
+    req->num_groups = 0;
+  }
+  return retval;
+}
+
+// Aerial vendor: send a dynamic-BFW UL weight-compute request (msg ID 0x91).
+// Same lifecycle constraints as the DL variant; the body layout is identical
+// and the message type alone distinguishes direction.
+int oai_fapi_ul_bfw_cvi_req(nfapi_nr_bfw_cvi_request_t *req)
+{
+  nfapi_vnf_p7_config_t *p7_config = get_p7_nr_vnf_config();
+  req->header.message_id = NFAPI_NR_PHY_MSG_TYPE_UL_BFW_CVI_REQUEST;
+
+  bool retval = p7_config->send_p7_msg(get_p7_nr_vnf(), &req->header);
+  if (!retval) {
+    LOG_E(PHY, "%s() Problem sending retval:%d\n", __FUNCTION__, retval);
+  } else {
+    req->num_groups = 0;
+  }
+  return retval;
+}
+
 int oai_fapi_send_end_request(uint32_t frame, uint32_t slot, uint8_t phy_id)
 {
   nfapi_vnf_p7_config_t *p7_config = get_p7_nr_vnf_config();

@@ -27,6 +27,10 @@ uint8_t fapi_nr_p7_message_body_pack(nfapi_nr_p7_message_header_t *header,
     case NFAPI_NR_PHY_MSG_TYPE_UL_DCI_REQUEST:
       result = pack_ul_dci_request(header, ppWritePackedMsg, end);
     break;
+    case NFAPI_NR_PHY_MSG_TYPE_DL_BFW_CVI_REQUEST:
+    case NFAPI_NR_PHY_MSG_TYPE_UL_BFW_CVI_REQUEST:
+      result = pack_bfw_cvi_request(header, ppWritePackedMsg, end);
+    break;
     case NFAPI_NR_PHY_MSG_TYPE_TX_DATA_REQUEST:
       result = pack_tx_data_request(header, ppWritePackedMsg, end);
     break;
@@ -166,6 +170,11 @@ bool fapi_nr_p7_message_unpack(void *pMessageBuf,
     case NFAPI_NR_PHY_MSG_TYPE_UL_DCI_REQUEST:
       if (check_nr_fapi_unpack_length(NFAPI_NR_PHY_MSG_TYPE_UL_DCI_REQUEST, unpackedBufLen))
         result = unpack_ul_dci_request(&pReadPackedMessage, end, pMessageHeader);
+    break;
+    case NFAPI_NR_PHY_MSG_TYPE_DL_BFW_CVI_REQUEST:
+    case NFAPI_NR_PHY_MSG_TYPE_UL_BFW_CVI_REQUEST:
+      if (check_nr_fapi_unpack_length(pMessageHeader->message_id, unpackedBufLen))
+        result = unpack_bfw_cvi_request(&pReadPackedMessage, end, pMessageHeader);
     break;
     case NFAPI_NR_PHY_MSG_TYPE_TX_DATA_REQUEST:
       if (check_nr_fapi_unpack_length(NFAPI_NR_PHY_MSG_TYPE_TX_DATA_REQUEST, unpackedBufLen))
@@ -1730,6 +1739,123 @@ static uint8_t pack_tx_data_pdu_list_value(void *tlv, uint8_t **ppWritePackedMsg
     }
   }
 
+  return 1;
+}
+
+// Aerial vendor extension: dynamic-BFW weight request (msg IDs 0x90 / 0x91).
+// DL and UL share the same on-the-wire layout; the message ID alone tells
+// cuPHY which direction to compute weights for.
+static uint8_t pack_bfw_cvi_ue_config(const nfapi_nr_bfw_cvi_ue_config_t *ue,
+                                      uint8_t **ppWritePackedMsg,
+                                      uint8_t *end)
+{
+  if (!(push16(ue->rnti, ppWritePackedMsg, end) && push32(ue->handle, ppWritePackedMsg, end)
+        && push16(ue->pdu_idx, ppWritePackedMsg, end) && push8(ue->gnb_ant_idx_start, ppWritePackedMsg, end)
+        && push8(ue->gnb_ant_idx_end, ppWritePackedMsg, end) && push8(ue->num_ue_ants, ppWritePackedMsg, end))) {
+    return 0;
+  }
+  if (ue->num_ue_ants > NFAPI_NR_MAX_BFW_CVI_UE_ANTS) {
+    return 0;
+  }
+  for (uint8_t a = 0; a < ue->num_ue_ants; ++a) {
+    if (!push8(ue->ue_ant_idx[a], ppWritePackedMsg, end)) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static uint8_t pack_bfw_cvi_group_config(const nfapi_nr_bfw_cvi_group_config_t *g,
+                                         uint8_t **ppWritePackedMsg,
+                                         uint8_t *end)
+{
+  if (!(push16(g->rb_start, ppWritePackedMsg, end) && push16(g->rb_size, ppWritePackedMsg, end)
+        && push16(g->num_prgs, ppWritePackedMsg, end) && push16(g->prg_size, ppWritePackedMsg, end)
+        && push8(g->num_ues, ppWritePackedMsg, end))) {
+    return 0;
+  }
+  if (g->num_ues > NFAPI_NR_MAX_BFW_CVI_UES_PER_GROUP) {
+    return 0;
+  }
+  for (uint8_t i = 0; i < g->num_ues; ++i) {
+    if (!pack_bfw_cvi_ue_config(&g->ue_list[i], ppWritePackedMsg, end)) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+uint8_t pack_bfw_cvi_request(void *msg, uint8_t **ppWritePackedMsg, uint8_t *end)
+{
+  nfapi_nr_bfw_cvi_request_t *pNfapiMsg = (nfapi_nr_bfw_cvi_request_t *)msg;
+
+  if (!(push16(pNfapiMsg->sfn, ppWritePackedMsg, end) && push16(pNfapiMsg->slot, ppWritePackedMsg, end)
+        && push8(pNfapiMsg->num_groups, ppWritePackedMsg, end))) {
+    return 0;
+  }
+  if (pNfapiMsg->num_groups > NFAPI_NR_MAX_BFW_CVI_GROUPS) {
+    return 0;
+  }
+  for (uint8_t i = 0; i < pNfapiMsg->num_groups; ++i) {
+    if (!pack_bfw_cvi_group_config(&pNfapiMsg->group_list[i], ppWritePackedMsg, end)) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static uint8_t unpack_bfw_cvi_ue_config(uint8_t **ppReadPackedMsg, uint8_t *end, nfapi_nr_bfw_cvi_ue_config_t *ue)
+{
+  if (!(pull16(ppReadPackedMsg, &ue->rnti, end) && pull32(ppReadPackedMsg, &ue->handle, end)
+        && pull16(ppReadPackedMsg, &ue->pdu_idx, end) && pull8(ppReadPackedMsg, &ue->gnb_ant_idx_start, end)
+        && pull8(ppReadPackedMsg, &ue->gnb_ant_idx_end, end) && pull8(ppReadPackedMsg, &ue->num_ue_ants, end))) {
+    return 0;
+  }
+  if (ue->num_ue_ants > NFAPI_NR_MAX_BFW_CVI_UE_ANTS) {
+    return 0;
+  }
+  for (uint8_t a = 0; a < ue->num_ue_ants; ++a) {
+    if (!pull8(ppReadPackedMsg, &ue->ue_ant_idx[a], end)) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static uint8_t unpack_bfw_cvi_group_config(uint8_t **ppReadPackedMsg, uint8_t *end, nfapi_nr_bfw_cvi_group_config_t *g)
+{
+  if (!(pull16(ppReadPackedMsg, &g->rb_start, end) && pull16(ppReadPackedMsg, &g->rb_size, end)
+        && pull16(ppReadPackedMsg, &g->num_prgs, end) && pull16(ppReadPackedMsg, &g->prg_size, end)
+        && pull8(ppReadPackedMsg, &g->num_ues, end))) {
+    return 0;
+  }
+  if (g->num_ues > NFAPI_NR_MAX_BFW_CVI_UES_PER_GROUP) {
+    return 0;
+  }
+  for (uint8_t i = 0; i < g->num_ues; ++i) {
+    if (!unpack_bfw_cvi_ue_config(ppReadPackedMsg, end, &g->ue_list[i])) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+uint8_t unpack_bfw_cvi_request(uint8_t **ppReadPackedMsg, uint8_t *end, void *msg)
+{
+  nfapi_nr_bfw_cvi_request_t *pNfapiMsg = (nfapi_nr_bfw_cvi_request_t *)msg;
+
+  if (!(pull16(ppReadPackedMsg, &pNfapiMsg->sfn, end) && pull16(ppReadPackedMsg, &pNfapiMsg->slot, end)
+        && pull8(ppReadPackedMsg, &pNfapiMsg->num_groups, end))) {
+    return 0;
+  }
+  if (pNfapiMsg->num_groups > NFAPI_NR_MAX_BFW_CVI_GROUPS) {
+    return 0;
+  }
+  for (uint8_t i = 0; i < pNfapiMsg->num_groups; ++i) {
+    if (!unpack_bfw_cvi_group_config(ppReadPackedMsg, end, &pNfapiMsg->group_list[i])) {
+      return 0;
+    }
+  }
   return 1;
 }
 
