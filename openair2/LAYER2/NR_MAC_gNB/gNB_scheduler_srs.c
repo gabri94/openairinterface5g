@@ -449,36 +449,78 @@ void nr_srs_ri_computation(const nfapi_nr_srs_normalized_channel_iq_matrix_t *nr
 // --- SRS chest buffer pool (SRS_DYNAMIC_BFW) ---------------------------------
 // One cuPHY chest buffer per active UE; index carried in SRS_PDU handle 8..23.
 // get-or-allocate the UE's buffer; returns index, or -1 if the pool is full.
-static int nr_srs_chest_buf_get(gNB_MAC_INST *mac, uint16_t rnti)
+static int nr_srs_chest_buf_get(nr_cell_sched_t *cell, uint16_t rnti)
 {
   for (int i = 0; i < NR_SRS_CHEST_BUF_POOL_SIZE; i++)
-    if (mac->srs_chest_buf[i].state != SRS_CHEST_BUF_FREE && mac->srs_chest_buf[i].rnti == rnti)
+    if (cell->srs_chest_buf[i].state != SRS_CHEST_BUF_FREE && cell->srs_chest_buf[i].rnti == rnti)
       return i;
   for (int i = 0; i < NR_SRS_CHEST_BUF_POOL_SIZE; i++)
-    if (mac->srs_chest_buf[i].state == SRS_CHEST_BUF_FREE) {
-      mac->srs_chest_buf[i].state = SRS_CHEST_BUF_ALLOCATED;
-      mac->srs_chest_buf[i].rnti = rnti;
+    if (cell->srs_chest_buf[i].state == SRS_CHEST_BUF_FREE) {
+      cell->srs_chest_buf[i].state = SRS_CHEST_BUF_ALLOCATED;
+      cell->srs_chest_buf[i].rnti = rnti;
       return i;
     }
   LOG_W(NR_MAC, "SRS chest buffer pool exhausted (%d) for rnti %04x\n", NR_SRS_CHEST_BUF_POOL_SIZE, rnti);
   return -1;
 }
 
-void nr_srs_chest_buf_mark_ready(gNB_MAC_INST *mac, uint16_t rnti)
+// SRS chest stored for this UE: mark its buffer READY and record the chest dims.
+void nr_srs_chest_buf_mark_ready(nr_cell_sched_t *cell, uint16_t rnti, uint8_t ng, uint8_t nu)
 {
   for (int i = 0; i < NR_SRS_CHEST_BUF_POOL_SIZE; i++)
-    if (mac->srs_chest_buf[i].state == SRS_CHEST_BUF_ALLOCATED && mac->srs_chest_buf[i].rnti == rnti) {
-      mac->srs_chest_buf[i].state = SRS_CHEST_BUF_READY;
+    if (cell->srs_chest_buf[i].state != SRS_CHEST_BUF_FREE && cell->srs_chest_buf[i].rnti == rnti) {
+      cell->srs_chest_buf[i].state = SRS_CHEST_BUF_READY;
+      cell->srs_chest_buf[i].ng = ng;
+      cell->srs_chest_buf[i].nu = nu;
       return;
     }
 }
 
-void nr_srs_chest_buf_free_ue(gNB_MAC_INST *mac, uint16_t rnti)
+// If the UE has a freshly-READY chest, return its index (+ dims) and mark it
+// REQUESTED so exactly one BFW_CVI request is issued per SRS update; else -1.
+int nr_srs_chest_buf_consume_ready(nr_cell_sched_t *cell, uint16_t rnti, uint8_t *ng, uint8_t *nu)
 {
   for (int i = 0; i < NR_SRS_CHEST_BUF_POOL_SIZE; i++)
-    if (mac->srs_chest_buf[i].state != SRS_CHEST_BUF_FREE && mac->srs_chest_buf[i].rnti == rnti) {
-      mac->srs_chest_buf[i].state = SRS_CHEST_BUF_FREE;
-      mac->srs_chest_buf[i].rnti = 0;
+    if (cell->srs_chest_buf[i].state == SRS_CHEST_BUF_READY && cell->srs_chest_buf[i].rnti == rnti) {
+      if (ng) *ng = cell->srs_chest_buf[i].ng;
+      if (nu) *nu = cell->srs_chest_buf[i].nu;
+      cell->srs_chest_buf[i].state = SRS_CHEST_BUF_REQUESTED;
+      return i;
+    }
+  return -1;
+}
+
+// Read-only: true if a fresh (READY) SRS chest exists for this rnti, i.e. cuPHY
+// has dynamic weights we can ask it to apply. Used to decide whether a PDSCH may
+// drop its BeamId (dynamic) or must keep the static beam (initial access / pre-SRS).
+bool nr_srs_chest_buf_peek_ready(const nr_cell_sched_t *cell, uint16_t rnti)
+{
+  for (int i = 0; i < NR_SRS_CHEST_BUF_POOL_SIZE; i++)
+    if (cell->srs_chest_buf[i].state == SRS_CHEST_BUF_READY && cell->srs_chest_buf[i].rnti == rnti)
+      return true;
+  return false;
+}
+
+// Non-consuming: return the buffer index of a READY chest for rnti (+ its ng/nu),
+// leaving it READY so the proactive per-slot BFW emitter can reuse it every slot
+// until the next SRS.IND refreshes it. Returns -1 if no READY chest.
+int nr_srs_chest_buf_get_ready(const nr_cell_sched_t *cell, uint16_t rnti, uint8_t *ng, uint8_t *nu)
+{
+  for (int i = 0; i < NR_SRS_CHEST_BUF_POOL_SIZE; i++)
+    if (cell->srs_chest_buf[i].state == SRS_CHEST_BUF_READY && cell->srs_chest_buf[i].rnti == rnti) {
+      if (ng) *ng = cell->srs_chest_buf[i].ng;
+      if (nu) *nu = cell->srs_chest_buf[i].nu;
+      return i;
+    }
+  return -1;
+}
+
+void nr_srs_chest_buf_free_ue(nr_cell_sched_t *cell, uint16_t rnti)
+{
+  for (int i = 0; i < NR_SRS_CHEST_BUF_POOL_SIZE; i++)
+    if (cell->srs_chest_buf[i].state != SRS_CHEST_BUF_FREE && cell->srs_chest_buf[i].rnti == rnti) {
+      cell->srs_chest_buf[i].state = SRS_CHEST_BUF_FREE;
+      cell->srs_chest_buf[i].rnti = 0;
     }
 }
 
@@ -497,9 +539,17 @@ static void nr_configure_srs(gNB_MAC_INST *nrmac,
   if (cell->beam_info.beam_mode == SRS_DYNAMIC_BFW) {
     // stamp the UE's cuPHY chest buffer index into handle bits 8..23 so the
     // SRS estimate lands in a tracked per-UE buffer (later: BFW_CVI request).
-    int buf = nr_srs_chest_buf_get(nrmac, UE->rnti);
-    if (buf >= 0)
+    int buf = nr_srs_chest_buf_get(cell, UE->rnti);
+    if (buf >= 0) {
       srs_pdu->handle = ((uint32_t)(buf & 0xFFFF)) << 8;
+      // A fresh sounding is now in flight: cuBB will hold this chest buffer in
+      // SRS_CHEST_BUFF_REQUESTED from when it receives this SRS PDU until it
+      // sends the SRS.IND. Mirror that here so the per-slot BFW_CVI emitter
+      // (get_ready, READY-only) and the dig_bf gate (peek_ready) pause for this
+      // UE until mark_ready() on the SRS.IND — otherwise every emitted BFW_CVI
+      // in that window is rejected by cuBB with 0x40 SRS_CHEST_BUFF_BAD_STATE.
+      cell->srs_chest_buf[buf].state = SRS_CHEST_BUF_REQUESTED;
+    }
   }
   srs_pdu->bwp_size = current_BWP->BWPSize;
   srs_pdu->bwp_start = current_BWP->BWPStart;

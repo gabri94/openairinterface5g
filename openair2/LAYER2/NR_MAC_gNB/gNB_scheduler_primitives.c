@@ -3316,7 +3316,8 @@ void reset_ul_harq_list(NR_UE_sched_ctrl_t *sched_ctrl) {
 
 void mac_remove_nr_ue(gNB_MAC_INST *nr_mac, rnti_t rnti)
 {
-  nr_srs_chest_buf_free_ue(nr_mac, rnti);  // release the UE's SRS chest buffer (dynamic BFW)
+  for (int c = 0; c < NR_MAX_CELLS; c++)
+    nr_srs_chest_buf_free_ue(&nr_mac->cells[c], rnti);  // release the UE's SRS chest buffer (dynamic BFW)
   NR_UEs_t *UE_info = &nr_mac->UE_info;
   NR_UE_info_t *UE = remove_UE_from_list(MAX_MOBILES_PER_GNB + 1, UE_info->connected_ue_list, rnti);
   if (UE)

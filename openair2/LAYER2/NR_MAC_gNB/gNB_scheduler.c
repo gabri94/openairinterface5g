@@ -239,6 +239,13 @@ void gNB_dlsch_ulsch_scheduler(module_id_t module_idP, const int cell_id, frame_
   nr_schedule_ue_spec(gNB, cell, frame, slot, &sched_info->DL_req, &sched_info->TX_req);
   stop_meas(&cell->schedule_dlsch);
 
+#ifdef ENABLE_AERIAL
+  // Dynamic BFW: emit BFW_CVI every slot (proactive) so cuBB's slot-indexed BFW
+  // coeff ring stays full; PDSCH(N) reads ring[(N-1)%4] and finds fresh coeffs.
+  // Non-consuming (get_ready) so the same READY chest is re-stamped each slot.
+  nr_sched_dynamic_bfw(gNB, cell, frame, slot);
+#endif
+
   nr_schedule_pucch(gNB, cell, frame, slot);
 
   const int current_index = ul_buffer_index(frame, slot, slots_frame, cell->UL_tti_req_ahead_size);

@@ -1769,12 +1769,19 @@ static uint8_t pack_bfw_cvi_group_config(const nfapi_nr_bfw_cvi_group_config_t *
                                          uint8_t **ppWritePackedMsg,
                                          uint8_t *end)
 {
-  if (!(push16(g->rb_start, ppWritePackedMsg, end) && push16(g->rb_size, ppWritePackedMsg, end)
-        && push16(g->num_prgs, ppWritePackedMsg, end) && push16(g->prg_size, ppWritePackedMsg, end)
-        && push8(g->num_ues, ppWritePackedMsg, end))) {
+  if (g->num_ues > NFAPI_NR_MAX_BFW_CVI_UES_PER_GROUP) {
     return 0;
   }
-  if (g->num_ues > NFAPI_NR_MAX_BFW_CVI_UES_PER_GROUP) {
+  // cuBB's scf_fapi_dl_bfw_group_config_t leads with a uint16 pdu_size = total
+  // byte size of this group PDU (incl. the pdu_size field); L1 uses it to step
+  // to the next group (offset += pdu_size). Per-UE config is 11 bytes
+  // (rnti2+handle4+pduIndex2+gnb_start1+gnb_end1+num_ue_ants1) + num_ue_ants.
+  uint16_t pdu_size = 2 + 9;  // pdu_size + {rb_start,rb_size,num_prgs,prg_size,nUes}
+  for (uint8_t i = 0; i < g->num_ues; ++i)
+    pdu_size += 11 + g->ue_list[i].num_ue_ants;
+  if (!(push16(pdu_size, ppWritePackedMsg, end) && push16(g->rb_start, ppWritePackedMsg, end)
+        && push16(g->rb_size, ppWritePackedMsg, end) && push16(g->num_prgs, ppWritePackedMsg, end)
+        && push16(g->prg_size, ppWritePackedMsg, end) && push8(g->num_ues, ppWritePackedMsg, end))) {
     return 0;
   }
   for (uint8_t i = 0; i < g->num_ues; ++i) {
@@ -1824,7 +1831,9 @@ static uint8_t unpack_bfw_cvi_ue_config(uint8_t **ppReadPackedMsg, uint8_t *end,
 
 static uint8_t unpack_bfw_cvi_group_config(uint8_t **ppReadPackedMsg, uint8_t *end, nfapi_nr_bfw_cvi_group_config_t *g)
 {
-  if (!(pull16(ppReadPackedMsg, &g->rb_start, end) && pull16(ppReadPackedMsg, &g->rb_size, end)
+  uint16_t pdu_size;  // cuBB leads each group with a uint16 pdu_size; read & skip
+  if (!(pull16(ppReadPackedMsg, &pdu_size, end)
+        && pull16(ppReadPackedMsg, &g->rb_start, end) && pull16(ppReadPackedMsg, &g->rb_size, end)
         && pull16(ppReadPackedMsg, &g->num_prgs, end) && pull16(ppReadPackedMsg, &g->prg_size, end)
         && pull8(ppReadPackedMsg, &g->num_ues, end))) {
     return 0;

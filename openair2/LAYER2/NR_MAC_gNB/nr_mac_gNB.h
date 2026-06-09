@@ -893,10 +893,17 @@ typedef enum {
 // SRS chest buffer pool (SRS_DYNAMIC_BFW). One buffer per active UE; the index
 // is carried in SRS_PDU handle bits 8..23 so cuPHY stores that UE's chest there.
 #define NR_SRS_CHEST_BUF_POOL_SIZE 64  // <= SCF 222.10.04 NUM_SRS_CHEST_BUFFERS max (1023)
-typedef enum { SRS_CHEST_BUF_FREE = 0, SRS_CHEST_BUF_ALLOCATED, SRS_CHEST_BUF_READY } nr_srs_chest_buf_state_t;
+typedef enum {
+  SRS_CHEST_BUF_FREE = 0,
+  SRS_CHEST_BUF_ALLOCATED,  // index handed to an SRS PDU, chest not yet stored
+  SRS_CHEST_BUF_READY,      // cuPHY stored a fresh chest; BFW request pending
+  SRS_CHEST_BUF_REQUESTED,  // BFW_CVI request issued; weights computed/applied
+} nr_srs_chest_buf_state_t;
 typedef struct {
   nr_srs_chest_buf_state_t state;
   uint16_t rnti;
+  uint8_t  ng;   // gNB antenna elements in the stored chest
+  uint8_t  nu;   // UE SRS ports
 } nr_srs_chest_buf_t;
 
 typedef struct {
@@ -1272,6 +1279,9 @@ typedef struct nr_cell_sched_s {
 
   /// Beam management state for this cell
   NR_beam_info_t beam_info;
+  /// SRS chest buffer pool state (SRS_DYNAMIC_BFW): one entry per cuPHY chest
+  /// buffer of this cell; index travels in the SRS_PDU handle bits 8..23.
+  nr_srs_chest_buf_t srs_chest_buf[NR_SRS_CHEST_BUF_POOL_SIZE];
   /// SSB index → beam index mapping
   int16_t beam_index_list[MAX_NUM_OF_SSB];
 
@@ -1355,10 +1365,6 @@ typedef struct gNB_MAC_INST_s {
   nr_cell_sched_t cells[NR_MAX_CELLS];
 
   NR_UEs_t UE_info;
-
-  /// SRS chest buffer pool state (SRS_DYNAMIC_BFW): one entry per cuPHY chest
-  /// buffer; index travels in the SRS_PDU handle bits 8..23.
-  nr_srs_chest_buf_t srs_chest_buf[NR_SRS_CHEST_BUF_POOL_SIZE];
 
   /// DL preprocessor for differentiated scheduling
   nr_pp_impl_dl pre_processor_dl;

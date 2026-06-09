@@ -1593,9 +1593,15 @@ void handle_nr_srs_measurements(const module_id_t module_id,
           T_BUFFER(nr_srs_channel_iq_matrix.channel_matrix, matrix_bytes));
       }
 
-      // chest for this UE is now in its pool buffer -> mark READY (dynamic BFW)
+      // chest for this UE is now in its pool buffer -> mark READY + record dims.
+      // The DL scheduler issues the BFW_CVI request tagged with the DL slot
+      // (cuPHY validates the request slot against its current slot, so it must
+      // not be tagged with this past SRS slot).
       if (cell->beam_info.beam_mode == SRS_DYNAMIC_BFW)
-        nr_srs_chest_buf_mark_ready(nrmac, srs_ind->rnti);
+        nr_srs_chest_buf_mark_ready(cell,
+                                    srs_ind->rnti,
+                                    nr_srs_channel_iq_matrix.num_gnb_antenna_elements,
+                                    nr_srs_channel_iq_matrix.num_ue_srs_ports);
 
 #ifdef SRS_IND_DEBUG
       LOG_I(NR_MAC, "nr_srs_channel_iq_matrix.normalized_iq_representation = %i\n", nr_srs_channel_iq_matrix.normalized_iq_representation);

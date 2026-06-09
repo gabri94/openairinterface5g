@@ -968,9 +968,19 @@ nfapi_nr_dl_tti_pdsch_pdu_rel15_t *prepare_pdsch_pdu(nfapi_nr_dl_tti_request_pdu
   pdsch_pdu->precodingAndBeamforming.num_prgs = 1;
   pdsch_pdu->precodingAndBeamforming.prg_size = pdsch_pdu->rbSize;
   pdsch_pdu->precodingAndBeamforming.prgs_list[0].pm_idx = sched_pdsch->pm_index;
-  pdsch_pdu->precodingAndBeamforming.dig_bf_interfaces = pdsch_pdu->param_v4.spatialStreamsCw[0].numSpatialStreamIndices;
-  for (int i = 0; i < pdsch_pdu->param_v4.spatialStreamsCw[0].numSpatialStreamIndices; i++)
-    pdsch_pdu->precodingAndBeamforming.prgs_list[0].dig_bf_interface_list[i].beam_idx = beam_index;
+  if (cell->beam_info.beam_mode == SRS_DYNAMIC_BFW && UE && nr_srs_chest_buf_peek_ready(cell, UE->rnti)) {
+    // Dynamic BFW: a fresh SRS chest exists for this UE, so cuPHY can apply the
+    // SRS-derived weights it stored from the BFW_CVI request. Send no BeamId
+    // (Table 3-43 with dig_bf_interfaces=0 -> only pm_idx per PRG).
+    // NOTE: gated on a READY chest so initial-access PDSCH (Msg4/RAR, pre-SRS)
+    // and inter-SRS slots keep the static beam below and remain decodable
+    // (otherwise Msg4 goes out un-beamformed and the UE never finishes RA).
+    pdsch_pdu->precodingAndBeamforming.dig_bf_interfaces = 0;
+  } else {
+    pdsch_pdu->precodingAndBeamforming.dig_bf_interfaces = pdsch_pdu->param_v4.spatialStreamsCw[0].numSpatialStreamIndices;
+    for (int i = 0; i < pdsch_pdu->param_v4.spatialStreamsCw[0].numSpatialStreamIndices; i++)
+      pdsch_pdu->precodingAndBeamforming.prgs_list[0].dig_bf_interface_list[i].beam_idx = beam_index;
+  }
   return pdsch_pdu;
 }
 
@@ -1319,6 +1329,12 @@ void post_process_dlsch(gNB_MAC_INST *nr_mac,
                                                                    nl_tbslbrm,
                                                                    pduindex);
 
+  // Dynamic BFW (SRS_DYNAMIC_BFW): the BFW_CVI request is NOT emitted here. cuBB
+  // stores the computed weights at ring[arrival_slot] and a PDSCH in slot N reads
+  // ring[N-1] (get_prev_slotIdx), so the request must be processed one slot BEFORE
+  // the PDSCH. It is therefore emitted per-slot from gNB_dlsch_ulsch_scheduler()
+  // via nr_sched_dynamic_bfw(), tagged with the current slot.
+
   LOG_D(NR_MAC, "Configuring DCI/PDCCH in %d.%d at CCE %d, rnti %x\n", frame, slot, sched_ctrl->cce_index, rnti);
   /* Fill PDCCH DL DCI PDU */
   nfapi_nr_dl_dci_pdu_t *dci_pdu = prepare_dci_pdu(pdcch_pdu,
@@ -1387,6 +1403,51 @@ void post_process_dlsch(gNB_MAC_INST *nr_mac,
   generate_dl_mac_pdu(nr_mac, UE, harq, sched_pdsch, candidate, frame, slot);
   fill_dl_tx_request(pdsch, harq->transportBlock.buf, pduindex, TBS, frame, slot);
 }
+
+#ifdef ENABLE_AERIAL
+// Proactive dynamic-BFW emitter, called once per slot from gNB_dlsch_ulsch_scheduler().
+// cuBB stores the BFW_CVI-computed weights at ring[arrival_slot]; a PDSCH in slot N
+// reads ring[N-1] (get_prev_slotIdx) and is_latest_bfw_coff_avail() requires the coeffs
+// to be exactly one slot old. So for every connected UE with a READY SRS chest we emit a
+// BFW_CVI tagged with the CURRENT slot, every slot. Whatever slot a PDSCH lands in, the
+// previous slot's weights are already in ring[N-1], and cuPHY had a full slot to compute
+// them. Non-consuming (chest stays READY until the next SRS.IND), wideband (full BWP).
+void nr_sched_dynamic_bfw(gNB_MAC_INST *nr_mac, nr_cell_sched_t *cell, frame_t frame, slot_t slot)
+{
+  if (cell->beam_info.beam_mode != SRS_DYNAMIC_BFW)
+    return;
+  UE_iterator(nr_mac->UE_info.connected_ue_list, UE) {
+    uint8_t ng = 0, nu = 0;
+    int buf = nr_srs_chest_buf_get_ready(cell, UE->rnti, &ng, &nu);
+    if (buf < 0)
+      continue;
+    const NR_UE_DL_BWP_t *bwp = &UE->current_DL_BWP;
+    nfapi_nr_bfw_cvi_request_t req = {0};
+    req.header.phy_id = cell - nr_mac->cells;
+    req.sfn = frame;
+    req.slot = slot;
+    req.num_groups = 1;
+    nfapi_nr_bfw_cvi_group_config_t *g = &req.group_list[0];
+    g->rb_start = 0;
+    g->rb_size = bwp->BWPSize;
+    g->num_prgs = 1;
+    g->prg_size = bwp->BWPSize;
+    g->num_ues = 1;
+    nfapi_nr_bfw_cvi_ue_config_t *u = &g->ue_list[0];
+    u->rnti = UE->rnti;
+    u->handle = ((uint32_t)(buf & 0xFFFF)) << 8; // chest buffer index, bits 8..23
+    u->pdu_idx = 0;
+    u->gnb_ant_idx_start = 0;
+    u->gnb_ant_idx_end = ng ? ng - 1 : 0;
+    u->num_ue_ants = nu ? nu : 1;
+    for (int a = 0; a < u->num_ue_ants && a < NFAPI_NR_MAX_BFW_CVI_UE_ANTS; a++)
+      u->ue_ant_idx[a] = a;
+    oai_fapi_dl_bfw_cvi_req(&req);
+    LOG_D(NR_MAC, "[DYN-BFW][TX] %4d.%2d rnti %04x buf=%d bwp=%d ng=%d nu=%d (proactive 1-ahead)\n",
+          frame, slot, UE->rnti, buf, bwp->BWPSize, ng, nu);
+  }
+}
+#endif
 
 void nr_schedule_ue_spec(gNB_MAC_INST *gNB_mac,
                          nr_cell_sched_t *cell,

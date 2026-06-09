@@ -394,9 +394,20 @@ void handle_nr_srs_toa_vendor_ext_measurements(const module_id_t module_id,
                                                const int16_t *ta_offset_nsec,
                                                const rnti_t rnti);
 
-// SRS chest buffer pool (SRS_DYNAMIC_BFW), defined in gNB_scheduler_srs.c
-void nr_srs_chest_buf_mark_ready(gNB_MAC_INST *mac, uint16_t rnti);
-void nr_srs_chest_buf_free_ue(gNB_MAC_INST *mac, uint16_t rnti);
+// SRS chest buffer pool (SRS_DYNAMIC_BFW, one pool per cell), defined in gNB_scheduler_srs.c
+void nr_srs_chest_buf_mark_ready(nr_cell_sched_t *cell, uint16_t rnti, uint8_t ng, uint8_t nu);
+void nr_srs_chest_buf_free_ue(nr_cell_sched_t *cell, uint16_t rnti);
+int nr_srs_chest_buf_consume_ready(nr_cell_sched_t *cell, uint16_t rnti, uint8_t *ng, uint8_t *nu);
+bool nr_srs_chest_buf_peek_ready(const nr_cell_sched_t *cell, uint16_t rnti);
+int nr_srs_chest_buf_get_ready(const nr_cell_sched_t *cell, uint16_t rnti, uint8_t *ng, uint8_t *nu);
+#ifdef ENABLE_AERIAL
+// Aerial dynamic-BFW DL weight-compute request (msg 0x90), defined in
+// nfapi/oai_integration/aerial/fapi_nvIPC.c.
+int oai_fapi_dl_bfw_cvi_req(nfapi_nr_bfw_cvi_request_t *req);
+// Per-slot proactive BFW_CVI emitter (one slot ahead of PDSCH consumption),
+// defined in gNB_scheduler_dlsch.c.
+void nr_sched_dynamic_bfw(gNB_MAC_INST *nr_mac, nr_cell_sched_t *cell, frame_t frame, slot_t slot);
+#endif
 
 void find_SSB_and_RO_available(nr_cell_sched_t *cell);
 
