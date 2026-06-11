@@ -284,8 +284,8 @@ In the `MACRLCs` section of the gNB/DU configuration file:
 * `beams_per_period` (default 1): set of beams that can be simultaneously allocated in a
   period (`beam_duration`)
 * `ssb_beams`: beam indices statically allocated to SSB/PRACH, one per transmitted SSB
-  (required for `bf_method = "predefined"`; with a digital beam table, each index
-  must name one of its beams)
+  (required for `bf_method = "predefined"` and `"dynamic"`; with a digital beam
+  table, each index must name one of its beams)
 * `dbt_file`: path to a CSV file holding the digital beam table
 * `pusch_RSSI_Threshold`: Value between -1280 and 0 which maps to range
    from -128.0 dBm/dBFS to 0.0 dBm/dBFS. This limits PUSCH TPC commands in

@@ -5,7 +5,8 @@
 This document explains the implementation of beamforming in the OAI codebase:
 the beam-index based schemes in which the beam weights live outside L2 (analog
 beamforming at the RU, and digital beamforming driven by a digital beam table at
-L1), and the scheduler constraints they impose.
+L1), SRS-based dynamic beamforming, in which L1 derives the weights of each UE
+from its SRS, and the scheduler constraints they impose.
 
 [[_TOC_]]
 
@@ -59,9 +60,14 @@ The single parameter `bf_method` selects the beamforming method:
     does not appear in the table is rejected at startup.
   - without a DBT, L1 forwards the beam ID as is to the radio (e.g. an
     InterDigital frontend) or to the fronthaul (e.g. over 7.2x).
-- `dynamic`: static beamforming for the control signals, with DLSCH/ULSCH
-  precoded from the SRS channel estimate. Not implemented yet: selecting it
-  aborts at startup.
+- `dynamic`: SRS-reciprocity beamforming, NVIDIA Aerial only. The SSB, control
+  channels and the PDSCH of a UE that has not sounded SRS yet (RAR, Msg4) use
+  the static beams of `ssb_beams`, as with `predefined`. Once L1 holds an SRS
+  channel estimate of the UE, its PDSCH carries no beam ID and L1 applies
+  weights it computes from that estimate. Periodic SRS (`do_SRS = "periodic"`)
+  is therefore needed. Only the downlink is beamformed this way: PUSCH keeps
+  the static beam. See [Dynamic beamforming](#dynamic-beamforming) and
+  [DynamicBF.md](DynamicBF.md) for the L2 design.
 
 The remaining parameters are:
 - `beam_duration` is the number of slots (currently minimum duration of a beam)
@@ -69,7 +75,7 @@ The remaining parameters are:
 - `beams_per_period` is the number of concurrent beams the RU can handle in the
   beam duration (default value is 1)
 - `ssb_beams` is a vector field containing the set of beam indices statically
-  allocated to SSB/PRACH, required for `predefined`. The number of beam indices
+  allocated to SSB/PRACH, required for `predefined` and `dynamic`. The number of beam indices
   must be equal to the number of SSBs transmitted; a mismatch in either
   direction is rejected at startup.
 - `dbt_file` is the path to a CSV file holding the digital beam table; the table
@@ -119,7 +125,8 @@ RU" into "L1 applies these weights": with a table, L1 resolves each beam ID
 through it; without one, the ID is forwarded unchanged to the radio or the
 fronthaul.
 
-A DBT is only meaningful for `predefined`. Configuring one together with
+A DBT is only meaningful for `predefined` and `dynamic`; with `dynamic` it only
+holds the static beams of `ssb_beams`. Configuring one together with
 `straight-wire` or `das` is rejected at startup.
 
 It is also only supported with Aerial for the time being. The table does reach a
@@ -271,6 +278,12 @@ the process). For data channels, the currently implemented PF scheduler is used.
 The only modification is that a UE can be served only if there is a free beam
 available or the one of the beams already in use correspond to that UE beam.
 
+With `bf_method = "dynamic"` this restriction is lifted: L1 forms the beam of
+each PDU digitally, so UEs on different beams can share a slot. When no beam of
+the slot matches the UE beam, the scheduler uses the first one, the UEs share
+its VRB map and are therefore multiplexed in frequency (not spatially), and
+each PDU still carries the beam of its own UE.
+
 ## Beams in phy-test scheduler
 
 In phy-test mode, beams are assigned to PDSCH slots in the same manner as SSB
@@ -320,6 +333,22 @@ plain index into the beam table it was configured with, so the MSB is masked
 off when packing towards it. A native L1 currently handles only the MSB-set
 case and asserts otherwise, consistently with the digital beam table being
 restricted to Aerial.
+
+## Dynamic beamforming
+
+With `bf_method = "dynamic"`, the weights of a UE's PDSCH are not selected by a
+beam ID: the NVIDIA Aerial L1 computes them from the UE's SRS channel estimate.
+
+- Each SRS PDU names, in its `handle`, the L1 buffer in which the estimate of
+  that UE is kept (one per UE).
+- Every slot, L2 sends a `DL_BFW_CVI.request` (Aerial vendor message 0x90)
+  listing the UEs whose estimate is available, and L1 computes their weights.
+- The PDSCH of such a UE has no beam ID (`dig_bf_interfaces = 0`), so L1
+  applies the computed weights, sent to the RU as O-RAN section extension 11.
+
+Until the first SRS.indication of a UE, its PDSCH keeps the static beam from
+`ssb_beams`. The message, its timing and the L2 code are described in
+[DynamicBF.md](DynamicBF.md).
 
 ## L1 implementation
 
