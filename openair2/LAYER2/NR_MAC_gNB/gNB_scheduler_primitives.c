@@ -3998,6 +3998,20 @@ NR_beam_alloc_t beam_allocation_procedure(NR_beam_info_t *beam_info, int frame, 
     }
   }
 
+  /* SRS_DYNAMIC_BFW: the Aerial L1 multiplexes multiple beams within one slot
+     via frequency-domain BFW C-plane sections (per-PRG beam weights), so a
+     different beam sharing this slot is NOT a resource conflict the way it is
+     for true analog (one-beam-per-slot) beamforming. Rather than failing the
+     allocation (which makes a 2nd UE on a different SSB beam crash the SR /
+     PUCCH / PDSCH / PUSCH schedulers), share the first beam lane: the UEs then
+     share one UL/DL VRB map (so they are frequency-multiplexed, not
+     MU-MIMO-overlapped) while each UE's actual beam is still carried to L1
+     per-PDU via convert_to_fapi_beam(UE_beam_index). beams_per_period stays 1,
+     so no logical-port-block split (start_stream_idx = idx*num_ports) and no
+     num_tx_ant inflation. */
+  if (beam_info->beam_mode == SRS_DYNAMIC_BFW)
+    return (NR_beam_alloc_t) {.new_beam = false, .idx = 0};
+
   return (NR_beam_alloc_t) {.new_beam = false, .idx = -1};
 }
 
