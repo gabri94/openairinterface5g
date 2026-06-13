@@ -475,7 +475,10 @@ static void evaluate_sinr_report(NR_UE_info_t *UE,
   for (RSRP_report_t *i = sinr_report->r; i < sinr_report->r + sinr_report->nb; i++) {
     int bitlen = csi_report->CSI_report_bitlen.cri_ssbri_bitlen;
     curr_payload = pickandreverse_bits(payload, bitlen, *cumul_bits);
-    i->resource_id = *(index_list[bitlen > 0 ? (curr_payload & ~(~1U << (bitlen - 1))) : bitlen]);
+    int ssbri = bitlen > 0 ? (curr_payload & ~(~1U << (bitlen - 1))) : 0;
+    if (csi_report->nb_resources && ssbri >= csi_report->nb_resources)
+      ssbri = csi_report->nb_resources - 1;  // clamp corrupt/DTX index (see evaluate_rsrp_report)
+    i->resource_id = index_list ? *(index_list[ssbri]) : 0;
     LOG_D(MAC, "SSB/CSI-RS index = %d\n", i->resource_id);
     *cumul_bits += bitlen;
   }
@@ -560,7 +563,13 @@ static void evaluate_rsrp_report(NR_UE_info_t *UE,
   int bitlen = csi_report->CSI_report_bitlen.cri_ssbri_bitlen;
   for (RSRP_report_t *i = rsrp_report->r; i < rsrp_report->r + rsrp_report->nb; i++) {
     uint8_t idx_payload = pickandreverse_bits(payload, bitlen, *cumul_bits);
-    i->resource_id = *(index_list[bitlen > 0 ? (idx_payload & ~(~1U << (bitlen - 1))) : bitlen]);
+    int ssbri = bitlen > 0 ? (idx_payload & ~(~1U << (bitlen - 1))) : 0;
+    /* SSBRI/CRI is ceil(log2(nb_resources)) bits, so a corrupt/DTX report can
+       encode an index >= nb_resources (e.g. 3 with 3 SSBs); clamp it to avoid
+       indexing past *_Index_list (was a SIGSEGV). */
+    if (csi_report->nb_resources && ssbri >= csi_report->nb_resources)
+      ssbri = csi_report->nb_resources - 1;
+    i->resource_id = index_list ? *(index_list[ssbri]) : 0;
     *cumul_bits += bitlen;
   }
 

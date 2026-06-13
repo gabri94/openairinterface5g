@@ -477,6 +477,7 @@ typedef struct nr_csi_report {
   uint16_t offset;
   long **SSB_Index_list;
   long **CSI_Index_list;
+  uint8_t nb_resources;  // # entries in SSB/CSI Index_list; bounds the reported SSBRI/CRI
 //  uint8_t nb_of_nzp_csi_report;
   uint8_t nb_of_csi_ssb_report;
   L1_Meas_bitlen_t CSI_report_bitlen;
