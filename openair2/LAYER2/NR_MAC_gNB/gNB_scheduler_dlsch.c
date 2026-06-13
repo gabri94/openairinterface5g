@@ -1416,24 +1416,26 @@ void nr_sched_dynamic_bfw(gNB_MAC_INST *nr_mac, nr_cell_sched_t *cell, frame_t f
 {
   if (cell->beam_info.beam_mode != SRS_DYNAMIC_BFW)
     return;
+  /* Emit ONE DL_BFW_CVI.req per slot carrying every READY UE in a single group
+     (ue_list[]). Sending one request per UE makes cuBB reject the 2nd+ as a
+     "Duplicate DL_BFW_CVI.req received" for that SFN.slot. */
+  nfapi_nr_bfw_cvi_request_t req = {0};
+  req.header.phy_id = cell - nr_mac->cells;
+  req.sfn = frame;
+  req.slot = slot;
+  req.num_groups = 1;
+  nfapi_nr_bfw_cvi_group_config_t *g = &req.group_list[0];
+  const NR_UE_DL_BWP_t *bwp = NULL;
+  int n_ue = 0;
   UE_iterator(nr_mac->UE_info.connected_ue_list, UE) {
+    if (n_ue >= NFAPI_NR_MAX_BFW_CVI_UES_PER_GROUP)
+      break;
     uint8_t ng = 0, nu = 0;
     int buf = nr_srs_chest_buf_get_ready(cell, UE->rnti, &ng, &nu);
     if (buf < 0)
       continue;
-    const NR_UE_DL_BWP_t *bwp = &UE->current_DL_BWP;
-    nfapi_nr_bfw_cvi_request_t req = {0};
-    req.header.phy_id = cell - nr_mac->cells;
-    req.sfn = frame;
-    req.slot = slot;
-    req.num_groups = 1;
-    nfapi_nr_bfw_cvi_group_config_t *g = &req.group_list[0];
-    g->rb_start = 0;
-    g->rb_size = bwp->BWPSize;
-    g->num_prgs = 1;
-    g->prg_size = bwp->BWPSize;
-    g->num_ues = 1;
-    nfapi_nr_bfw_cvi_ue_config_t *u = &g->ue_list[0];
+    bwp = &UE->current_DL_BWP;
+    nfapi_nr_bfw_cvi_ue_config_t *u = &g->ue_list[n_ue];
     u->rnti = UE->rnti;
     u->handle = ((uint32_t)(buf & 0xFFFF)) << 8; // chest buffer index, bits 8..23
     u->pdu_idx = 0;
@@ -1442,10 +1444,18 @@ void nr_sched_dynamic_bfw(gNB_MAC_INST *nr_mac, nr_cell_sched_t *cell, frame_t f
     u->num_ue_ants = nu ? nu : 1;
     for (int a = 0; a < u->num_ue_ants && a < NFAPI_NR_MAX_BFW_CVI_UE_ANTS; a++)
       u->ue_ant_idx[a] = a;
-    oai_fapi_dl_bfw_cvi_req(&req);
-    LOG_D(NR_MAC, "[DYN-BFW][TX] %4d.%2d rnti %04x buf=%d bwp=%d ng=%d nu=%d (proactive 1-ahead)\n",
-          frame, slot, UE->rnti, buf, bwp->BWPSize, ng, nu);
+    n_ue++;
+    LOG_D(NR_MAC, "[DYN-BFW][TX] %4d.%2d rnti %04x buf=%d ng=%d nu=%d (UE %d in group)\n",
+          frame, slot, UE->rnti, buf, ng, nu, n_ue - 1);
   }
+  if (n_ue == 0)
+    return;
+  g->rb_start = 0;
+  g->rb_size = bwp->BWPSize;
+  g->num_prgs = 1;
+  g->prg_size = bwp->BWPSize;
+  g->num_ues = n_ue;
+  oai_fapi_dl_bfw_cvi_req(&req);
 }
 #endif
 
