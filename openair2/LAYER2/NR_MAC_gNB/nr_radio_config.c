@@ -684,7 +684,20 @@ static void set_dl_maxmimolayers(NR_PDSCH_ServingCellConfig_t *pdsch_servingcell
 static struct NR_SRS_Resource__resourceType__periodic *configure_periodic_srs(const int uid, const nr_cell_sched_t *cell)
 {
   const frame_structure_t *fs = &cell->frame_structure;
-  int offset = get_ul_slot_offset(fs, uid, false); // only full UL slots for SRS
+  /* The Amplitech O-RAN RU only returns SRS U-plane on a single UL slot per TDD
+     period (the last full UL slot) AND only on that slot's symbol 12: it
+     ignores any additional SRS section (other symbols or other UL slots), so
+     neither per-slot nor per-symbol multiplexing of multiple UEs works (the RU
+     does not respond to the 2nd section even in the same slot). Keep every UE
+     on that one slot+symbol and time-division-multiplex them across frames:
+     pin the slot, then stagger each UE's periodic-SRS offset by a whole frame
+     (uid * numb_slots_frame) so only one UE sounds per slot-9 occasion. The
+     period (>= numb_slots_period * MAX_MOBILES_PER_GNB) leaves room for several
+     UEs while keeping offset < period. */
+  const int ul_slots_per_period = get_ul_slots_per_period(fs);
+  const int srs_slot_idx = ul_slots_per_period > 0 ? ul_slots_per_period - 1 : uid;
+  int offset = get_ul_slot_offset(fs, srs_slot_idx, false); // last full UL slot (proven SRS slot)
+  offset += uid * fs->numb_slots_frame;                     // TDM UEs across frames, same slot+symbol
   // checked for validity in verify_radio_configuration
   AssertFatal(offset < 2560, "Cannot allocate SRS configuration for uid %d, not enough resources\n", uid);
   const int ideal_period = set_ideal_period(cell,false);
@@ -856,6 +869,10 @@ static NR_SRS_Resource_t *get_srs_resource(const NR_UE_NR_Capability_t *uecap,
     default:
       AssertFatal(1 == 0, "Invalid transmission comb %d\n", tx_comb);
   }
+  /* All UEs use the same UL slot AND the same symbol (symbol 12) for the
+     Amplitech RU - it only emits SRS U-plane on symbol 12. UEs are separated
+     in time across frames instead (see configure_periodic_srs()).
+     startPosition 1 -> symbol 12. */
   srs_res->resourceMapping.startPosition = 1;
   srs_res->resourceMapping.nrofSymbols = NR_SRS_Resource__resourceMapping__nrofSymbols_n1;
   srs_res->resourceMapping.repetitionFactor = NR_SRS_Resource__resourceMapping__repetitionFactor_n1;
