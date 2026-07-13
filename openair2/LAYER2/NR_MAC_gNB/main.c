@@ -73,6 +73,7 @@ void *nrmac_stats_thread(void *arg) {
       p += print_meas_log(&cell->rlc_data_req, "rlc_data_req", NULL, NULL, p, end - p);
       p += print_meas_log(&cell->nr_srs_ri_computation_timer, "UL-RI computation time", NULL, NULL, p, end - p);
       p += print_meas_log(&cell->nr_srs_tpmi_computation_timer, "UL-TPMI computation time", NULL, NULL, p, end - p);
+      p += print_meas_log(&cell->nr_srs_dl_ri_computation_timer, "DL-RI computation time", NULL, NULL, p, end - p);
     }
     NR_SCHED_UNLOCK(&gNB->sched_lock);
     size_t len = p - output;
@@ -312,13 +313,23 @@ void mac_top_init_gNB(ngran_node_t node_type,
 
       RC.nrmac[i]->dl_lcid_alloc = nr_dl_lcid_alloc_default;
 
+      // cross-UE SRS orthogonality matrix starts unknown (-1); pairs get a
+      // value on their first SRS.IND in SRS_DYNAMIC_BFW mode
+      for (int c = 0; c < NR_MAX_CELLS; c++)
+        for (int a = 0; a < NR_SRS_CHEST_BUF_POOL_SIZE; a++)
+          for (int b = 0; b < NR_SRS_CHEST_BUF_POOL_SIZE; b++)
+            RC.nrmac[i]->cells[c].srs_xcorr[a][b] = -1.0f;
+
       if (get_softmodem_params()->phy_test) {
         RC.nrmac[i]->pre_processor_dl = nr_preprocessor_phytest;
         RC.nrmac[i]->pre_processor_ul = nr_ul_preprocessor_phytest;
       } else {
         RC.nrmac[i]->pre_processor_dl = nr_dlsch_preprocessor;
         RC.nrmac[i]->pre_processor_ul = nr_ulsch_preprocessor;
-        RC.nrmac[i]->dl_ri_pmi_select = nr_dl_ri_pmi_select_default;
+        // beam_mode isn't configured yet at this point, so wire the SRS-aware
+        // selector unconditionally: it self-checks beam_mode at call time and
+        // reproduces nr_dl_ri_pmi_select_default outside SRS_DYNAMIC_BFW.
+        RC.nrmac[i]->dl_ri_pmi_select = nr_dl_ri_pmi_select_srs;
         RC.nrmac[i]->dl_mcs_select = nr_dl_mcs_select_default;
         RC.nrmac[i]->dl_beam_select = nr_dl_beam_select_default;
         RC.nrmac[i]->dl_tda_select = nr_dl_tda_select_default;

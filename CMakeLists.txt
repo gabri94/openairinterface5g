@@ -1218,6 +1218,7 @@ set (MAC_NR_SRC
   ${NR_GNB_MAC_DIR}/gNB_scheduler_phytest.c
   ${NR_GNB_MAC_DIR}/gNB_scheduler_uci.c
   ${NR_GNB_MAC_DIR}/gNB_scheduler_srs.c
+  ${NR_GNB_MAC_DIR}/nr_srs_dl_ri.c
   ${NR_GNB_MAC_DIR}/gNB_scheduler_RA.c
   ${NR_GNB_MAC_DIR}/gNB_scheduler_pcch.c
   ${NR_GNB_MAC_DIR}/mac_rrc_dl_handler.c

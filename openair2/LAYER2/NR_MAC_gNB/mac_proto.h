@@ -400,6 +400,14 @@ void nr_srs_chest_buf_free_ue(nr_cell_sched_t *cell, uint16_t rnti);
 int nr_srs_chest_buf_consume_ready(nr_cell_sched_t *cell, uint16_t rnti, uint8_t *ng, uint8_t *nu);
 bool nr_srs_chest_buf_peek_ready(const nr_cell_sched_t *cell, uint16_t rnti);
 int nr_srs_chest_buf_get_ready(const nr_cell_sched_t *cell, uint16_t rnti, uint8_t *ng, uint8_t *nu);
+
+// SRS-reciprocity DL feedback (SRS_DYNAMIC_BFW), defined in gNB_scheduler_srs.c:
+// DL rank into srs_feedback.dl_ri + cross-UE orthogonality matrix refresh.
+void nr_srs_dl_reciprocity_update(nr_cell_sched_t *cell,
+                                  NR_UE_info_t *UE,
+                                  const nfapi_nr_srs_normalized_channel_iq_matrix_t *m);
+float nr_srs_ue_orthogonality(const nr_cell_sched_t *cell, uint16_t rnti_a, uint16_t rnti_b);
+float nr_srs_ue_max_xcorr(const nr_cell_sched_t *cell, uint16_t rnti);
 #ifdef ENABLE_AERIAL
 // Aerial dynamic-BFW DL weight-compute request (msg 0x90), defined in
 // nfapi/oai_integration/aerial/fapi_nvIPC.c.

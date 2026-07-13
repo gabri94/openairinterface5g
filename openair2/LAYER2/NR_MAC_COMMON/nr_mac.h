@@ -509,6 +509,9 @@ typedef struct nr_srs_feedback {
   uint8_t sri;
   uint8_t ul_ri;
   uint8_t tpmi;
+  /// SRS-reciprocity DL rank (0-based, like ul_ri): number of DL layers - 1
+  /// supported by the sounded channel. Only maintained in SRS_DYNAMIC_BFW mode.
+  uint8_t dl_ri;
 } nr_srs_feedback_t;
 
 typedef struct NR_UE_DL_BWP {

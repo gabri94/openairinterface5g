@@ -46,6 +46,34 @@ void nr_dl_ri_pmi_select_default(const nr_cell_sched_t *cell, nr_dl_candidate_t 
   }
 }
 
+// SRS-reciprocity RI selector: in SRS_DYNAMIC_BFW mode, when cuPHY holds a
+// fresh SRS chest for the UE (the same gate that lets the PDSCH use dynamic
+// weights instead of a static BeamId, see gNB_scheduler_dlsch.c), take the
+// rank from the SRS-derived dl_ri instead of the UE's CSI report. A codebook
+// PMI is meaningless then (cuPHY applies the SRS-derived weights), so
+// pm_index = 0. Everything else (retx, DCI 1_0, no fresh chest, other beam
+// modes) behaves exactly like the default selector.
+void nr_dl_ri_pmi_select_srs(const nr_cell_sched_t *cell, nr_dl_candidate_t *candidates, int n_candidates)
+{
+  FOR_EACH_CANDIDATE(cand, candidates, n_candidates)
+  {
+    NR_UE_sched_ctrl_t *sched_ctrl = &cand->UE->UE_sched_ctrl;
+    NR_UE_DL_BWP_t *dl_bwp = &cand->UE->current_DL_BWP;
+    if (cand->is_retx) {
+      cand->sched_pdsch.nrOfLayers = sched_ctrl->harq_processes[cand->retx_harq_pid].sched_pdsch.nrOfLayers;
+      cand->sched_pdsch.pm_index =
+          get_pm_index(cell, cand->UE, dl_bwp->dci_format, cand->sched_pdsch.nrOfLayers, cell->radio_config.pdsch_AntennaPorts.XP);
+    } else if (cell->beam_info.beam_mode == SRS_DYNAMIC_BFW && dl_bwp->dci_format != NR_DL_DCI_FORMAT_1_0
+               && nr_srs_chest_buf_peek_ready(cell, cand->rnti)) {
+      cand->sched_pdsch.nrOfLayers = sched_ctrl->srs_feedback.dl_ri + 1;
+      cand->sched_pdsch.pm_index = 0;
+    } else {
+      cand->sched_pdsch.nrOfLayers = cand->csi_ri + 1;
+      cand->sched_pdsch.pm_index = cand->csi_pm_index;
+    }
+  }
+}
+
 // Default TDA selector: picks the slot-wide TDA index from get_dl_tda(),
 // then resolves tda_info per candidate using each UE's own BWP / search
 // space / coreset. Marks invalids with skipped=true.

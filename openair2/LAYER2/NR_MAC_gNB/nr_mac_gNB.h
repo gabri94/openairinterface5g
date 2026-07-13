@@ -23,6 +23,7 @@
 #include "common/utils/ds/spsc_q.h"
 #include "openair2/LAYER2/nr_rlc/nr_rlc_configuration.h"
 #include "openair2/LAYER2/NR_MAC_gNB/nr_pos_ue_context.h"
+#include "NR_MAC_gNB/nr_srs_dl_ri.h"
 
 #define NR_SCHED_LOCK(lock)                                        \
   do {                                                             \
@@ -904,6 +905,13 @@ typedef struct {
   uint16_t rnti;
   uint8_t  ng;   // gNB antenna elements in the stored chest
   uint8_t  nu;   // UE SRS ports
+  // CPU-side reduced chest for the cross-UE orthogonality metric: orthonormal
+  // column-space basis from the last SRS.IND, layout (pb*rank + mode)*ng + g
+  // (see nr_srs_dl_ri.h). Lazily allocated, owned by the pool entry.
+  nr_srs_cf_t *basis;
+  uint32_t basis_cap;   // allocated elements
+  uint8_t  basis_rank;  // modes stored (0 = no valid basis)
+  uint16_t basis_nprg;  // basis PRGs stored
 } nr_srs_chest_buf_t;
 
 typedef struct {
@@ -1282,6 +1290,10 @@ typedef struct nr_cell_sched_s {
   /// SRS chest buffer pool state (SRS_DYNAMIC_BFW): one entry per cuPHY chest
   /// buffer of this cell; index travels in the SRS_PDU handle bits 8..23.
   nr_srs_chest_buf_t srs_chest_buf[NR_SRS_CHEST_BUF_POOL_SIZE];
+  /// Cross-UE channel orthogonality (squared subspace overlap in [0,1], -1 =
+  /// unknown), indexed by chest pool slot; refreshed on each SRS.IND. Not yet
+  /// consumed by the scheduler -- observability + future MU-MIMO pairing.
+  float srs_xcorr[NR_SRS_CHEST_BUF_POOL_SIZE][NR_SRS_CHEST_BUF_POOL_SIZE];
   /// SSB index → beam index mapping
   int16_t beam_index_list[MAX_NUM_OF_SSB];
 
@@ -1343,6 +1355,8 @@ typedef struct nr_cell_sched_s {
   time_stats_t nr_srs_ri_computation_timer;
   /// processing time of nr_srs_tpmi_estimation
   time_stats_t nr_srs_tpmi_computation_timer;
+  /// processing time of nr_srs_dl_reciprocity_update (DL-RI + orthogonality)
+  time_stats_t nr_srs_dl_ri_computation_timer;
   /// processing time of gNB ULSCH reception, including rlc_data_ind
   time_stats_t rx_ulsch_sdu;
 } nr_cell_sched_t;

@@ -521,7 +521,133 @@ void nr_srs_chest_buf_free_ue(nr_cell_sched_t *cell, uint16_t rnti)
     if (cell->srs_chest_buf[i].state != SRS_CHEST_BUF_FREE && cell->srs_chest_buf[i].rnti == rnti) {
       cell->srs_chest_buf[i].state = SRS_CHEST_BUF_FREE;
       cell->srs_chest_buf[i].rnti = 0;
+      free(cell->srs_chest_buf[i].basis);
+      cell->srs_chest_buf[i].basis = NULL;
+      cell->srs_chest_buf[i].basis_cap = 0;
+      cell->srs_chest_buf[i].basis_rank = 0;
+      cell->srs_chest_buf[i].basis_nprg = 0;
+      for (int j = 0; j < NR_SRS_CHEST_BUF_POOL_SIZE; j++) {
+        cell->srs_xcorr[i][j] = -1.0f;
+        cell->srs_xcorr[j][i] = -1.0f;
+      }
     }
+}
+
+/* pool slot of this rnti (any non-FREE state), or -1 */
+static int nr_srs_chest_buf_find(const nr_cell_sched_t *cell, uint16_t rnti)
+{
+  for (int i = 0; i < NR_SRS_CHEST_BUF_POOL_SIZE; i++)
+    if (cell->srs_chest_buf[i].state != SRS_CHEST_BUF_FREE && cell->srs_chest_buf[i].rnti == rnti)
+      return i;
+  return -1;
+}
+
+// SRS-reciprocity DL feedback off the codebook SRS.IND channel matrix:
+// wideband DL rank into srs_feedback.dl_ri (consumed by nr_dl_ri_pmi_select_srs)
+// and an orthonormal channel-subspace basis into the UE's chest pool entry,
+// from which the cross-UE orthogonality row srs_xcorr[buf][*] is refreshed.
+void nr_srs_dl_reciprocity_update(nr_cell_sched_t *cell,
+                                  NR_UE_info_t *UE,
+                                  const nfapi_nr_srs_normalized_channel_iq_matrix_t *m)
+{
+  /* called with sched_lock held, from handle_nr_srs_measurements() */
+  NR_UE_sched_ctrl_t *sched_ctrl = &UE->UE_sched_ctrl;
+  sched_ctrl->srs_feedback.dl_ri = 0;
+
+  const int iq_bits = (m->normalized_iq_representation == 0) ? 8 : 16;
+  const NR_ServingCellConfigCommon_t *scc = cell->common_channels.ServingCellConfigCommon;
+  long max_layers = UE->sc_info.maxMIMO_Layers_PDSCH ? *UE->sc_info.maxMIMO_Layers_PDSCH
+                                                     : ue_supported_dl_layers(scc, UE->capability);
+  if (max_layers < 1)
+    max_layers = 1;
+  if (max_layers > NR_SRS_DL_RI_MAX_PORTS)
+    max_layers = NR_SRS_DL_RI_MAX_PORTS;
+
+  /* basis storage lives in the UE's chest pool entry (exists in dynamic-BFW
+   * mode since nr_configure_srs allocated it for the sounding) */
+  const int buf = nr_srs_chest_buf_find(cell, UE->rnti);
+  nr_srs_cf_t *basis = NULL;
+  if (buf >= 0) {
+    nr_srs_chest_buf_t *e = &cell->srs_chest_buf[buf];
+    const int nprg_dec = (m->num_prgs + NR_SRS_DL_RI_PRG_STEP - 1) / NR_SRS_DL_RI_PRG_STEP;
+    const int nb_max = (nprg_dec + NR_SRS_DL_RI_BASIS_STEP - 1) / NR_SRS_DL_RI_BASIS_STEP;
+    const uint32_t need = (uint32_t)nb_max * max_layers * m->num_gnb_antenna_elements;
+    if (e->basis_cap < need) {
+      free(e->basis);
+      e->basis = malloc(need * sizeof(*e->basis));
+      e->basis_cap = e->basis ? need : 0;
+    }
+    basis = e->basis;
+    e->basis_rank = 0; /* invalidated until this update succeeds */
+  }
+
+  int basis_nprg = 0;
+  const int rank = nr_srs_dl_rank_estimate(m->channel_matrix,
+                                           iq_bits,
+                                           m->num_gnb_antenna_elements,
+                                           m->num_ue_srs_ports,
+                                           m->num_prgs,
+                                           NR_SRS_DL_RI_PRG_STEP,
+                                           NR_SRS_DL_RI_REL_THRESH,
+                                           (int)max_layers,
+                                           NR_SRS_DL_RI_BASIS_STEP,
+                                           basis,
+                                           &basis_nprg);
+
+  if (buf >= 0 && (rank < 1 || basis_nprg < 1)) { /* garbage chest: drop stale metrics */
+    for (int j = 0; j < NR_SRS_CHEST_BUF_POOL_SIZE; j++) {
+      cell->srs_xcorr[buf][j] = -1.0f;
+      cell->srs_xcorr[j][buf] = -1.0f;
+    }
+    return;
+  }
+  if (rank < 1)
+    return;
+
+  sched_ctrl->srs_feedback.dl_ri = rank - 1;
+
+  if (buf < 0 || !basis)
+    return;
+  nr_srs_chest_buf_t *e = &cell->srs_chest_buf[buf];
+  e->basis_rank = rank;
+  e->basis_nprg = basis_nprg;
+
+  for (int j = 0; j < NR_SRS_CHEST_BUF_POOL_SIZE; j++) {
+    float xc = -1.0f;
+    const nr_srs_chest_buf_t *o = &cell->srs_chest_buf[j];
+    if (j != buf && o->state != SRS_CHEST_BUF_FREE && o->basis_rank > 0 && o->ng == e->ng) {
+      const int nb = e->basis_nprg < o->basis_nprg ? e->basis_nprg : o->basis_nprg;
+      xc = nr_srs_subspace_xcorr(e->basis, e->basis_rank, o->basis, o->basis_rank, e->ng, nb);
+      LOG_D(NR_MAC, "SRS xcorr rnti %04x <-> %04x = %.3f\n", UE->rnti, o->rnti, xc);
+    }
+    cell->srs_xcorr[buf][j] = xc;
+    cell->srs_xcorr[j][buf] = xc;
+  }
+  cell->srs_xcorr[buf][buf] = 1.0f;
+}
+
+// Cross-UE channel orthogonality: squared subspace overlap in [0,1]
+// (0 = orthogonal, ideal MU-MIMO pair), or -1 if unknown/stale.
+float nr_srs_ue_orthogonality(const nr_cell_sched_t *cell, uint16_t rnti_a, uint16_t rnti_b)
+{
+  const int a = nr_srs_chest_buf_find(cell, rnti_a);
+  const int b = nr_srs_chest_buf_find(cell, rnti_b);
+  if (a < 0 || b < 0)
+    return -1.0f;
+  return cell->srs_xcorr[a][b];
+}
+
+// Highest channel overlap between this UE and any other tracked UE, -1 if none.
+float nr_srs_ue_max_xcorr(const nr_cell_sched_t *cell, uint16_t rnti)
+{
+  const int a = nr_srs_chest_buf_find(cell, rnti);
+  if (a < 0)
+    return -1.0f;
+  float max_xc = -1.0f;
+  for (int j = 0; j < NR_SRS_CHEST_BUF_POOL_SIZE; j++)
+    if (j != a && cell->srs_xcorr[a][j] > max_xc)
+      max_xc = cell->srs_xcorr[a][j];
+  return max_xc;
 }
 
 static void nr_configure_srs(gNB_MAC_INST *nrmac,

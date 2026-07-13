@@ -8,6 +8,7 @@
 #include "LAYER2/NR_MAC_gNB/nr_mac_gNB.h"
 
 void nr_dl_ri_pmi_select_default(const nr_cell_sched_t *cell, nr_dl_candidate_t *candidates, int n_candidates);
+void nr_dl_ri_pmi_select_srs(const nr_cell_sched_t *cell, nr_dl_candidate_t *candidates, int n_candidates);
 void nr_dl_mcs_select_default(const nr_cell_sched_t *cell, nr_dl_candidate_t *candidates, int n_candidates);
 
 int nr_dl_beam_select_default(NR_beam_info_t *beam_info,

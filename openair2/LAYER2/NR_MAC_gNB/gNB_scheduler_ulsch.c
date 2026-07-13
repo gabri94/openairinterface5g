@@ -1645,7 +1645,26 @@ void handle_nr_srs_measurements(const module_id_t module_id,
                                                              sched_ctrl->srs_feedback.ul_ri);
       stop_meas(&cell->nr_srs_tpmi_computation_timer);
 
-      sprintf(stats->srs_stats, "UL-RI %d, TPMI %d", sched_ctrl->srs_feedback.ul_ri + 1, sched_ctrl->srs_feedback.tpmi);
+      int len = snprintf(stats->srs_stats,
+                         sizeof(stats->srs_stats),
+                         "UL-RI %d, TPMI %d",
+                         sched_ctrl->srs_feedback.ul_ri + 1,
+                         sched_ctrl->srs_feedback.tpmi);
+
+      if (cell->beam_info.beam_mode == SRS_DYNAMIC_BFW) {
+        // SRS-reciprocity DL rank + cross-UE orthogonality (consumed by
+        // nr_dl_ri_pmi_select_srs for the PDSCH layer count)
+        start_meas(&cell->nr_srs_dl_ri_computation_timer);
+        nr_srs_dl_reciprocity_update(cell, UE, &nr_srs_channel_iq_matrix);
+        stop_meas(&cell->nr_srs_dl_ri_computation_timer);
+        len += snprintf(stats->srs_stats + len,
+                        sizeof(stats->srs_stats) - len,
+                        ", DL-RI %d",
+                        sched_ctrl->srs_feedback.dl_ri + 1);
+        const float xc = nr_srs_ue_max_xcorr(cell, UE->rnti);
+        if (xc >= 0 && len < (int)sizeof(stats->srs_stats))
+          snprintf(stats->srs_stats + len, sizeof(stats->srs_stats) - len, ", XC %.2f", xc);
+      }
 
       break;
     }
