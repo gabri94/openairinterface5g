@@ -1574,6 +1574,17 @@ void handle_nr_srs_measurements(const module_id_t module_id,
                                                  &nr_srs_channel_iq_matrix,
                                                  sizeof(nfapi_nr_srs_normalized_channel_iq_matrix_t));
 
+      LOG_I(NR_MAC,
+            "(%d.%d) SRS.IND rnti %04x: %d UE port(s), %d gNB ant, %d PRGs (prg_size %d, %d-bit IQ)\n",
+            frame,
+            slot,
+            srs_ind->rnti,
+            nr_srs_channel_iq_matrix.num_ue_srs_ports,
+            nr_srs_channel_iq_matrix.num_gnb_antenna_elements,
+            nr_srs_channel_iq_matrix.num_prgs,
+            nr_srs_channel_iq_matrix.prg_size,
+            nr_srs_channel_iq_matrix.normalized_iq_representation ? 16 : 8);
+
       {
         /* normalized_iq_representation: 0 -> c8_t (2 bytes), 1 -> c16_t (4 bytes) */
         const int iq_bytes = (nr_srs_channel_iq_matrix.normalized_iq_representation == 0) ? sizeof(c8_t) : sizeof(c16_t);
