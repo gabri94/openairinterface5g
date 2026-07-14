@@ -442,7 +442,12 @@ void nr_srs_ri_computation(const nfapi_nr_srs_normalized_channel_iq_matrix_t *nr
     *ul_ri = most_frequent_ri(antenna_rank, num_prgs);
 
   } else {
-    AssertFatal(1 == 0, "nr_srs_ri_computation() function is not implemented for row = %i and col = %i\n", row, col);
+    // mMIMO antenna counts (e.g. 32/64 gNB elements) are not supported by this
+    // legacy pivot-counting implementation. Keep UL single-layer rather than
+    // dying: multi-layer UL PUSCH is unvalidated on the Aerial path anyway,
+    // and the SRS-reciprocity DL rank has its own estimator (nr_srs_dl_ri.c).
+    LOG_D(NR_MAC, "nr_srs_ri_computation() not implemented for row = %i, col = %i: keeping UL-RI 0\n", row, col);
+    *ul_ri = 0;
   }
 }
 
