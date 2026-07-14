@@ -1574,8 +1574,19 @@ void handle_nr_srs_measurements(const module_id_t module_id,
                                                  &nr_srs_channel_iq_matrix,
                                                  sizeof(nfapi_nr_srs_normalized_channel_iq_matrix_t));
 
+      float port_pow_db[NR_SRS_DL_RI_MAX_PORTS];
+      float eig_ratio_db;
+      nr_srs_dl_chest_diag(nr_srs_channel_iq_matrix.channel_matrix,
+                           nr_srs_channel_iq_matrix.normalized_iq_representation ? 16 : 8,
+                           nr_srs_channel_iq_matrix.num_gnb_antenna_elements,
+                           nr_srs_channel_iq_matrix.num_ue_srs_ports,
+                           nr_srs_channel_iq_matrix.num_prgs,
+                           4,
+                           port_pow_db,
+                           &eig_ratio_db);
       LOG_I(NR_MAC,
-            "(%d.%d) SRS.IND rnti %04x: %d UE port(s), %d gNB ant, %d PRGs (prg_size %d, %d-bit IQ)\n",
+            "(%d.%d) SRS.IND rnti %04x: %d UE port(s), %d gNB ant, %d PRGs (prg_size %d, %d-bit IQ), "
+            "port pwr [%.1f %.1f %.1f %.1f] dB, l2/l1 %.1f dB\n",
             frame,
             slot,
             srs_ind->rnti,
@@ -1583,7 +1594,12 @@ void handle_nr_srs_measurements(const module_id_t module_id,
             nr_srs_channel_iq_matrix.num_gnb_antenna_elements,
             nr_srs_channel_iq_matrix.num_prgs,
             nr_srs_channel_iq_matrix.prg_size,
-            nr_srs_channel_iq_matrix.normalized_iq_representation ? 16 : 8);
+            nr_srs_channel_iq_matrix.normalized_iq_representation ? 16 : 8,
+            port_pow_db[0],
+            port_pow_db[1],
+            port_pow_db[2],
+            port_pow_db[3],
+            eig_ratio_db);
 
       {
         /* normalized_iq_representation: 0 -> c8_t (2 bytes), 1 -> c16_t (4 bytes) */

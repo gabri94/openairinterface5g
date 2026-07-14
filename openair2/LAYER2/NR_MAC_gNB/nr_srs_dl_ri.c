@@ -303,6 +303,71 @@ int nr_srs_dl_rank_estimate(const void *iq,
   return rank;
 }
 
+void nr_srs_dl_chest_diag(const void *iq,
+                          int iq_bits,
+                          int ng,
+                          int nu,
+                          int nprg,
+                          int prg_step,
+                          float port_pow_db[NR_SRS_DL_RI_MAX_PORTS],
+                          float *eig_ratio_db)
+{
+  for (int u = 0; u < NR_SRS_DL_RI_MAX_PORTS; u++)
+    port_pow_db[u] = -999.0f;
+  if (eig_ratio_db)
+    *eig_ratio_db = 0.0f;
+  if (!iq || (iq_bits != 8 && iq_bits != 16) || ng < 1 || nu < 1 || nu > NR_SRS_DL_RI_MAX_PORTS || nprg < 1)
+    return;
+  if (prg_step < 1)
+    prg_step = 1;
+
+  /* wideband Gram accumulated over all decimated PRGs; source rows (fixed
+   * u,g) are contiguous in p so iterate that way */
+  nr_srs_cd_t gm[NR_SRS_DL_RI_MAX_PORTS * NR_SRS_DL_RI_MAX_PORTS] = {{0, 0}};
+  long n_elem = 0;
+  for (int u1 = 0; u1 < nu; u1++)
+    for (int u2 = u1; u2 < nu; u2++) {
+      double are = 0, aim = 0;
+      for (int g = 0; g < ng; g++) {
+        const size_t base1 = 2 * ((size_t)(u1 * ng + g) * nprg);
+        const size_t base2 = 2 * ((size_t)(u2 * ng + g) * nprg);
+        for (int p = 0; p < nprg; p += prg_step) {
+          double h1re, h1im, h2re, h2im;
+          if (iq_bits == 8) {
+            const int8_t *m = (const int8_t *)iq;
+            h1re = m[base1 + 2 * p];
+            h1im = m[base1 + 2 * p + 1];
+            h2re = m[base2 + 2 * p];
+            h2im = m[base2 + 2 * p + 1];
+          } else {
+            const int16_t *m = (const int16_t *)iq;
+            h1re = m[base1 + 2 * p];
+            h1im = m[base1 + 2 * p + 1];
+            h2re = m[base2 + 2 * p];
+            h2im = m[base2 + 2 * p + 1];
+          }
+          are += h1re * h2re + h1im * h2im; /* conj(h1) * h2 */
+          aim += h1re * h2im - h1im * h2re;
+        }
+      }
+      gm[u1 * nu + u2] = (nr_srs_cd_t){are, aim};
+      gm[u2 * nu + u1] = (nr_srs_cd_t){are, -aim};
+      if (u1 == 0 && u2 == 0)
+        n_elem = ng * ((nprg + prg_step - 1) / prg_step);
+    }
+
+  for (int u = 0; u < nu; u++) {
+    const double mean_pow = gm[u * nu + u].re / (double)n_elem;
+    port_pow_db[u] = (float)(10.0 * log10(mean_pow + 1e-12));
+  }
+
+  if (eig_ratio_db && nu >= 2) {
+    double ev[NR_SRS_DL_RI_MAX_PORTS];
+    nr_srs_hermitian_eig(nu, gm, ev, NULL);
+    *eig_ratio_db = (float)(10.0 * log10((ev[1] + 1e-12) / (ev[0] + 1e-12)));
+  }
+}
+
 float nr_srs_subspace_xcorr(const nr_srs_cf_t *basis_a,
                             int ra,
                             const nr_srs_cf_t *basis_b,

@@ -85,6 +85,20 @@ int nr_srs_dl_rank_estimate(const void *iq,
                             nr_srs_cf_t *basis,
                             int *basis_nprg);
 
+/* Chest diagnostics for the SRS.IND log line: per-UE-port mean power over the
+ * band (dB, arbitrary reference: 10*log10 of mean |h|^2 per element) and the
+ * wideband Gram eigenvalue ratio lambda2/lambda1 in dB (0 if nu < 2). A dead
+ * sounding port shows up as a large per-port power gap; a genuinely rank-1
+ * channel shows balanced port powers but a very negative eigenvalue ratio. */
+void nr_srs_dl_chest_diag(const void *iq,
+                          int iq_bits,
+                          int ng,
+                          int nu,
+                          int nprg,
+                          int prg_step,
+                          float port_pow_db[NR_SRS_DL_RI_MAX_PORTS],
+                          float *eig_ratio_db);
+
 /* Mean squared subspace overlap between two UEs' channel column spaces:
  *   (1 / (nprg * min(ra, rb))) * sum_prg ||Ua^H Ub||_F^2   in [0, 1]
  * 0 = orthogonal channels (ideal MU-MIMO pair), 1 = fully overlapping.
