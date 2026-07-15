@@ -886,7 +886,18 @@ typedef enum {
   NO_BEAM_MODE,
   PRECONFIGURED_BEAM_IDX,
   LOPHY_BEAM_IDX,
+  SRS_DYNAMIC_BFW,  // set_analog_beamforming = 3: SRS-derived dynamic BF weights
+                    // (cuPHY BFW_CVI requests off the per-UE SRS chest buffers)
 } nr_beam_mode_t;
+
+// SRS chest buffer pool (SRS_DYNAMIC_BFW). One buffer per active UE; the index
+// is carried in SRS_PDU handle bits 8..23 so cuPHY stores that UE's chest there.
+#define NR_SRS_CHEST_BUF_POOL_SIZE 64  // <= SCF 222.10.04 NUM_SRS_CHEST_BUFFERS max (1023)
+typedef enum { SRS_CHEST_BUF_FREE = 0, SRS_CHEST_BUF_ALLOCATED, SRS_CHEST_BUF_READY } nr_srs_chest_buf_state_t;
+typedef struct {
+  nr_srs_chest_buf_state_t state;
+  uint16_t rnti;
+} nr_srs_chest_buf_t;
 
 typedef struct {
   /// list of allocated beams per period
@@ -1344,6 +1355,10 @@ typedef struct gNB_MAC_INST_s {
   nr_cell_sched_t cells[NR_MAX_CELLS];
 
   NR_UEs_t UE_info;
+
+  /// SRS chest buffer pool state (SRS_DYNAMIC_BFW): one entry per cuPHY chest
+  /// buffer; index travels in the SRS_PDU handle bits 8..23.
+  nr_srs_chest_buf_t srs_chest_buf[NR_SRS_CHEST_BUF_POOL_SIZE];
 
   /// DL preprocessor for differentiated scheduling
   nr_pp_impl_dl pre_processor_dl;

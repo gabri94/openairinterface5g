@@ -1135,6 +1135,15 @@ uint8_t pack_nr_config_request(void *msg, uint8_t **ppWritePackedMsg, uint8_t *e
                         end,
                         &pack_uint16_tlv_value);
   numTLVs++;
+
+  // Aerial vendor TLV: per-cell SRS chest buffer pool size (0xA019, uint32_t).
+  // Required to enable dynamic-BFW SRS reuse on the cuPHY side.
+  retval &= pack_nr_tlv(NFAPI_NR_CONFIG_NUM_SRS_CHEST_BUFFERS_TAG,
+                        &(pNfapiMsg->carrier_config.num_srs_chest_buffers),
+                        ppWritePackedMsg,
+                        end,
+                        &pack_uint32_tlv_value);
+  numTLVs++;
 #else
   // START Precoding Matrix (PM) PDU
   if (pNfapiMsg->pmi_list.num_pm_idx != 0) {

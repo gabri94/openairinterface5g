@@ -446,6 +446,42 @@ void nr_srs_ri_computation(const nfapi_nr_srs_normalized_channel_iq_matrix_t *nr
   }
 }
 
+// --- SRS chest buffer pool (SRS_DYNAMIC_BFW) ---------------------------------
+// One cuPHY chest buffer per active UE; index carried in SRS_PDU handle 8..23.
+// get-or-allocate the UE's buffer; returns index, or -1 if the pool is full.
+static int nr_srs_chest_buf_get(gNB_MAC_INST *mac, uint16_t rnti)
+{
+  for (int i = 0; i < NR_SRS_CHEST_BUF_POOL_SIZE; i++)
+    if (mac->srs_chest_buf[i].state != SRS_CHEST_BUF_FREE && mac->srs_chest_buf[i].rnti == rnti)
+      return i;
+  for (int i = 0; i < NR_SRS_CHEST_BUF_POOL_SIZE; i++)
+    if (mac->srs_chest_buf[i].state == SRS_CHEST_BUF_FREE) {
+      mac->srs_chest_buf[i].state = SRS_CHEST_BUF_ALLOCATED;
+      mac->srs_chest_buf[i].rnti = rnti;
+      return i;
+    }
+  LOG_W(NR_MAC, "SRS chest buffer pool exhausted (%d) for rnti %04x\n", NR_SRS_CHEST_BUF_POOL_SIZE, rnti);
+  return -1;
+}
+
+void nr_srs_chest_buf_mark_ready(gNB_MAC_INST *mac, uint16_t rnti)
+{
+  for (int i = 0; i < NR_SRS_CHEST_BUF_POOL_SIZE; i++)
+    if (mac->srs_chest_buf[i].state == SRS_CHEST_BUF_ALLOCATED && mac->srs_chest_buf[i].rnti == rnti) {
+      mac->srs_chest_buf[i].state = SRS_CHEST_BUF_READY;
+      return;
+    }
+}
+
+void nr_srs_chest_buf_free_ue(gNB_MAC_INST *mac, uint16_t rnti)
+{
+  for (int i = 0; i < NR_SRS_CHEST_BUF_POOL_SIZE; i++)
+    if (mac->srs_chest_buf[i].state != SRS_CHEST_BUF_FREE && mac->srs_chest_buf[i].rnti == rnti) {
+      mac->srs_chest_buf[i].state = SRS_CHEST_BUF_FREE;
+      mac->srs_chest_buf[i].rnti = 0;
+    }
+}
+
 static void nr_configure_srs(gNB_MAC_INST *nrmac,
                              nr_cell_sched_t *cell,
                              nfapi_nr_srs_pdu_t *srs_pdu,
@@ -458,6 +494,13 @@ static void nr_configure_srs(gNB_MAC_INST *nrmac,
 
   srs_pdu->rnti = UE->rnti;
   srs_pdu->handle = 0;
+  if (cell->beam_info.beam_mode == SRS_DYNAMIC_BFW) {
+    // stamp the UE's cuPHY chest buffer index into handle bits 8..23 so the
+    // SRS estimate lands in a tracked per-UE buffer (later: BFW_CVI request).
+    int buf = nr_srs_chest_buf_get(nrmac, UE->rnti);
+    if (buf >= 0)
+      srs_pdu->handle = ((uint32_t)(buf & 0xFFFF)) << 8;
+  }
   srs_pdu->bwp_size = current_BWP->BWPSize;
   srs_pdu->bwp_start = current_BWP->BWPStart;
   srs_pdu->subcarrier_spacing = current_BWP->scs;

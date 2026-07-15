@@ -163,9 +163,9 @@
   { .s5 = { NULL } }, \
   { .s2 = { NULL } }, \
   { .s3a = { config_checkstr_assign_integer, \
-             {"none", "preconfigured", "lophy"}, \
-             {NO_BEAM_MODE, PRECONFIGURED_BEAM_IDX, LOPHY_BEAM_IDX}, \
-             3 } }, \
+             {"none", "preconfigured", "lophy", "dynamic_bfw"}, \
+             {NO_BEAM_MODE, PRECONFIGURED_BEAM_IDX, LOPHY_BEAM_IDX, SRS_DYNAMIC_BFW}, \
+             4 } }, \
   { .s5 = { NULL } }, \
   { .s5 = { NULL } }, \
   { .s5 = { NULL } }, \

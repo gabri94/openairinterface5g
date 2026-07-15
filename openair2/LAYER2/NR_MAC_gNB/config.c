@@ -767,7 +767,12 @@ cfg->carrier_config.num_tx_port.tl.tag = NFAPI_NR_CONFIG_NUM_TX_PORT_TAG;
   // cache estimates for dynamic-BFW weight requests. The value range is
   // 0..1023; cuPHY enforces an upper bound (MAX_SRS_CHEST_BUFFERS_PER_CELL
   // on its side) and falls back to a default if the TLV is absent.
-  cfg->carrier_config.num_srs_chest_buffers.value = config->num_srs_chest_buffers;
+  // libconfig parsing for this isn't wired yet, so default to a non-zero pool
+  // when unset: sending the TLV with value 0 makes cuPHY allocate a zero-size
+  // SRS chest mempool (getSrsChestBufferState: mempoolsize 0 -> SRS setup fails
+  // under SCF_FAPI_10_04). 64 buffers is ample for the current single-UE tests.
+  cfg->carrier_config.num_srs_chest_buffers.value =
+      config->num_srs_chest_buffers ? config->num_srs_chest_buffers : NR_SRS_CHEST_BUF_POOL_SIZE;
   cfg->carrier_config.num_srs_chest_buffers.tl.tag = NFAPI_NR_CONFIG_NUM_SRS_CHEST_BUFFERS_TAG;
   cfg->num_tlv++;
 #endif

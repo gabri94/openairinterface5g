@@ -394,6 +394,10 @@ void handle_nr_srs_toa_vendor_ext_measurements(const module_id_t module_id,
                                                const int16_t *ta_offset_nsec,
                                                const rnti_t rnti);
 
+// SRS chest buffer pool (SRS_DYNAMIC_BFW), defined in gNB_scheduler_srs.c
+void nr_srs_chest_buf_mark_ready(gNB_MAC_INST *mac, uint16_t rnti);
+void nr_srs_chest_buf_free_ue(gNB_MAC_INST *mac, uint16_t rnti);
+
 void find_SSB_and_RO_available(nr_cell_sched_t *cell);
 
 NR_pdsch_dmrs_t get_dl_dmrs_params(const NR_ServingCellConfigCommon_t *scc,

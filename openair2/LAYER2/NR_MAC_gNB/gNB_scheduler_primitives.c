@@ -3316,6 +3316,7 @@ void reset_ul_harq_list(NR_UE_sched_ctrl_t *sched_ctrl) {
 
 void mac_remove_nr_ue(gNB_MAC_INST *nr_mac, rnti_t rnti)
 {
+  nr_srs_chest_buf_free_ue(nr_mac, rnti);  // release the UE's SRS chest buffer (dynamic BFW)
   NR_UEs_t *UE_info = &nr_mac->UE_info;
   NR_UE_info_t *UE = remove_UE_from_list(MAX_MOBILES_PER_GNB + 1, UE_info->connected_ue_list, rnti);
   if (UE)
@@ -3962,7 +3963,8 @@ void fill_beam_index_list(NR_ServingCellConfigCommon_t *scc, const nr_mac_config
   int index = 0;
   for (int i = 0; i < len; ++i) {
     if (IS_BIT_SET(ssbBitmap, (63 - i))) {
-      int fapi_index = cell->beam_info.beam_mode == LOPHY_BEAM_IDX ? config->bw_list[index] : index;
+      int fapi_index = (cell->beam_info.beam_mode == LOPHY_BEAM_IDX || cell->beam_info.beam_mode == SRS_DYNAMIC_BFW)
+                           ? config->bw_list[index] : index;
       cell->beam_index_list[i] = fapi_index;
       index++;
     } else
