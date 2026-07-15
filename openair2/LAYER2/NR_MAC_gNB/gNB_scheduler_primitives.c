@@ -4055,7 +4055,26 @@ int beam_selection_procedures(nr_cell_sched_t *cell, NR_UE_info_t *UE)
   if (!cell->radio_config.do_TCI) { // if not TCI is configure we switch beam directly
     if (UE->UE_beam_index == new_bf_index)
       return -1; // no beam change needed
-    return new_bf_index;
+    // The beam switch triggers an RRC reconfiguration via UE Context
+    // Modification; doing that while another reconfiguration is pending
+    // collides and drops the UE. Postpone until the pending one is applied.
+    if (UE->reconfigCellGroup)
+      return -1;
+    // Hysteresis: only leave the serving beam for a meaningfully stronger one.
+    // Without it, a UE between two beams (or with saturated RSRP reports)
+    // ping-pongs on every CSI report. If the serving beam is not part of the
+    // report (e.g. nrofReportedRS = 1 reports only the strongest SSB), there
+    // is nothing to compare against: keep the serving beam rather than
+    // flapping on the ordering of near-equal measurements.
+    const int beam_switch_hyst_db = 3;
+    for (int i = 1; i < rsrp_report->nb; i++) {
+      if (get_beam_from_ssbidx(cell, rsrp_report->r[i].resource_id) == UE->UE_beam_index) {
+        if (rsrp_report->r[0].RSRP < rsrp_report->r[i].RSRP + beam_switch_hyst_db)
+          return -1; // serving beam still within hysteresis of the best
+        return new_bf_index;
+      }
+    }
+    return -1; // serving beam not reported: no comparison possible, don't switch
   }
 
   tciStateInd_t *tci = &sched_ctrl->UE_mac_ce_ctrl.tci_state_ind;
