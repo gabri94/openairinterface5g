@@ -215,8 +215,12 @@ void gNB_dlsch_ulsch_scheduler(module_id_t module_idP, frame_t frame, slot_t slo
   // Schedule CSI-RS transmission
   nr_csirs_scheduling(module_idP, frame, slot, &sched_info->DL_req);
 
+  /* Skip periodic CSI reporting in DL-only test mode: it books a PUCCH F2
+     occasion (CSI Part 1) that arms the L1 UL pipeline. Note nr_csirs_scheduling()
+     above is unaffected - the DL CSI-RS is still transmitted. */
   // Schedule CSI measurement reporting
-  nr_csi_meas_reporting(module_idP, frame, slot);
+  if (!phytest_no_uci)
+    nr_csi_meas_reporting(module_idP, frame, slot);
 
   nr_schedule_periodic_srs(module_idP, frame, slot);
 
@@ -236,7 +240,9 @@ void gNB_dlsch_ulsch_scheduler(module_id_t module_idP, frame_t frame, slot_t slo
   nr_schedule_ue_spec(module_idP, frame, slot, &sched_info->DL_req, &sched_info->TX_req);
   stop_meas(&gNB->schedule_dlsch);
 
-  nr_sr_reporting(gNB, frame, slot);
+  /* Skip SR in DL-only test mode: it books a PUCCH F0 occasion. */
+  if (!phytest_no_uci)
+    nr_sr_reporting(gNB, frame, slot);
 
   nr_schedule_pucch(gNB, frame, slot);
 

@@ -62,5 +62,7 @@
 #define CONFIG_HLP_ULBM_PHYTEST  "Bitmap for ULSCH slots in period (slot 0 starts at LSB)\n"
 #define CONFIG_HLP_DLMOD_PHYTEST "For-DLSCH, if val is n, every nth slot in slots per frame will be scheduled. \n"
 #define CONFIG_HLP_ULMOD_PHYTEST "For ULSCH, if val is n, every nth slot in slots per frame will be scheduled. \n"
+#define CONFIG_HLP_NOACKFB_PHYTEST "PHYTEST DL-only: do not allocate HARQ-ACK PUCCH (no UL reception is armed)\n"
+#define CONFIG_HLP_NOUCI_PHYTEST "PHYTEST DL-only: do not schedule periodic CSI reporting or SR on PUCCH\n"
 void wait_gNBs(void);
 #endif

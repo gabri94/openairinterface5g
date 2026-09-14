@@ -40,6 +40,8 @@ uint32_t target_dl_pmi = 0;
 uint32_t target_dl_bw = 50;
 uint64_t dlsch_slot_bitmap = (1<<1);
 uint32_t dlsch_slot_modval = 0;
+uint32_t phytest_no_harq_fb = 0;
+uint32_t phytest_no_uci = 0;
 
 /* schedules whole bandwidth for first user, all the time */
 void nr_preprocessor_phytest(gNB_MAC_INST *mac, post_process_pdsch_t *pp_pdsch)
@@ -141,7 +143,12 @@ void nr_preprocessor_phytest(gNB_MAC_INST *mac, post_process_pdsch_t *pp_pdsch)
   int harq_pid = sched_ctrl->retrans_dl_harq.head;
   if (harq_pid < 0)
     harq_pid = sched_ctrl->available_dl_harq.head;
-  if (!get_FeedbackDisabled(UE->sc_info.downlinkHARQ_FeedbackDisabled_r17, harq_pid)) {
+  /* DL-only test mode: skip the HARQ-ACK PUCCH allocation. alloc stays -1, which
+     post_process_dlsch() treats exactly like Rel-17 feedback-disabled: the DCI PUCCH
+     fields are zeroed and finish_nr_dl_harq() recycles the HARQ pid immediately
+     instead of parking it on feedback_dl_harq. Needed when the RU never returns UL
+     U-plane, because an armed PUCCH occasion otherwise stalls the L1 order kernel. */
+  if (!phytest_no_harq_fb && !get_FeedbackDisabled(UE->sc_info.downlinkHARQ_FeedbackDisabled_r17, harq_pid)) {
     int r_pucch = nr_get_pucch_resource(sched_ctrl->coreset, UE->current_UL_BWP.pucch_Config, CCEIndex);
     alloc = nr_acknack_scheduling(mac, UE, frame, slot, 0, r_pucch, 0);
     if (alloc < 0) {
