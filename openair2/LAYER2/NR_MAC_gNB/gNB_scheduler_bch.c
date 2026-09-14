@@ -117,6 +117,7 @@ bool is_ssb_configured(const NR_ServingCellConfigCommon_t *scc, int ssb_index)
 
 void schedule_nr_mib(nr_cell_sched_t *cell, frame_t frameP, slot_t slotP, nfapi_nr_dl_tti_request_t *DL_req)
 {
+  cell->ssb_in_current_slot = false; /* [SSB-SKIP] */
   /* already mutex protected: held in gNB_dlsch_ulsch_scheduler() */
   nfapi_nr_dl_tti_request_body_t *dl_req;
 
@@ -178,6 +179,7 @@ void schedule_nr_mib(nr_cell_sched_t *cell, frame_t frameP, slot_t slotP, nfapi_
           AssertFatal(beam.idx >= 0, "Cannot allocate SSB %d in any available beam\n", i_ssb);
           const uint16_t alloc_beam_idx = get_allocated_beam(&cell->beam_info, frameP, slotP, slots_per_frame, beam.idx);
           const uint16_t fapi_beam = convert_to_fapi_beam(alloc_beam_idx, cell->beam_info.beam_mode);
+          cell->ssb_in_current_slot = true; /* [SSB-SKIP] */
           schedule_ssb(frameP,
                        slotP,
                        scc,

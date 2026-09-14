@@ -1287,6 +1287,7 @@ typedef struct nr_cell_sched_s {
 
   /// Beam management state for this cell
   NR_beam_info_t beam_info;
+  bool ssb_in_current_slot; /* [SSB-SKIP] set by schedule_nr_mib, read by nr_schedule_ue_spec */
   /// SRS chest buffer pool state (SRS_DYNAMIC_BFW): one entry per cuPHY chest
   /// buffer of this cell; index travels in the SRS_PDU handle bits 8..23.
   nr_srs_chest_buf_t srs_chest_buf[NR_SRS_CHEST_BUF_POOL_SIZE];

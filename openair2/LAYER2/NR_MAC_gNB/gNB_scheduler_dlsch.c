@@ -1466,6 +1466,12 @@ void nr_schedule_ue_spec(gNB_MAC_INST *gNB_mac,
                          nfapi_nr_dl_tti_request_t *DL_req,
                          nfapi_nr_tx_data_request_t *TX_req)
 {
+  /* [SSB-SKIP] Amplitech RU corrupts PDSCH sharing a slot with SSB under dynamic
+   * BFW (mixed static/dynamic SE11 weight sections in one slot). Skip UE DLSCH
+   * in SSB-carrying slots in that mode; HARQ retx reschedule on later slots. */
+  if (cell->beam_info.beam_mode == SRS_DYNAMIC_BFW && cell->ssb_in_current_slot)
+    return;
+
   /* already mutex protected: held in gNB_dlsch_ulsch_scheduler() */
   AssertFatal(pthread_mutex_trylock(&gNB_mac->sched_lock) == EBUSY,
               "this function should be called with the scheduler mutex locked\n");
