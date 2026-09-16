@@ -133,6 +133,11 @@ static int ipc_handle_rx_msg(nv_ipc_msg_t *msg)
         if (vnf_p7_config->_public.nr_srs_indication) {
           (vnf_p7_config->_public.nr_srs_indication)(&ind);
         }
+        // unpack_nr_srs_indication() callocs pdu_list, and every PDU embeds the
+        // ~272 KB report_tlv.value array (272 PRG * 4 ports * 64 ant * 4 B).
+        // Free it like the RX_DATA case above; report_tlv.value is an embedded
+        // array, not a pointer, so no per-PDU free is needed.
+        free(ind.pdu_list);
         break;
       }
 
