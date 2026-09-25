@@ -727,7 +727,8 @@ static void nr_configure_srs(gNB_MAC_INST *nrmac,
   }
   srs_pdu->srs_parameters_v4.report_type[0] = 1;
   srs_pdu->srs_parameters_v4.iq_representation = 1;
-  srs_pdu->srs_parameters_v4.prg_size = 1;
+  // MACRLC srs_prg_size; 0 is reserved in FAPI (e.g. config not parsed in simulators) -> per-RB estimate
+  srs_pdu->srs_parameters_v4.prg_size = cell->radio_config.srs_prg_size ? cell->radio_config.srs_prg_size : 1;
   srs_pdu->srs_parameters_v4.num_total_ue_antennas = 1 << srs_pdu->num_ant_ports;
   /* For srs usage: codebook, this is a bitmask of the antenna ports that should be used for data.
   * num_ant_ports num_total_ue_antennas sampled_ue_antennas

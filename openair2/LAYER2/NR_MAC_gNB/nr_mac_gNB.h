@@ -232,6 +232,10 @@ typedef struct nr_mac_config_s {
   /// to size the pool used for dynamic-BFW SRS reuse. Default to 0 means
   /// "let cuPHY pick its built-in default".
   uint32_t num_srs_chest_buffers;
+  /// PRG size in RBs of the SRS channel estimate requested from L1 (SRS PDU
+  /// prgSize, SCF 222.10.04). 1 = per-RB estimate; larger values make L1
+  /// average over wider PRGs and shrink the SRS.IND matrix accordingly.
+  uint16_t srs_prg_size;
 } nr_mac_config_t;
 
 typedef struct NR_preamble_ue {

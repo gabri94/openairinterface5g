@@ -55,6 +55,7 @@
 #define MACRLC_PUCCH_RSSI_THRESHOLD          "pucch_RSSI_Threshold"
 #define MACRLC_STATS_MAX_UE                  "stats_max_ue"
 #define MACRLC_SPATIAL_STREAM_IDX            "spatial_stream_index"
+#define MACRLC_SRS_PRG_SIZE                  "srs_prg_size"
 
 #define HLP_MACRLC_UL_PRBBLACK "SNR threshold to decide whether a PRB will be blacklisted or not"
 #define HLP_MACRLC_DL_BLER_UP "Upper threshold of BLER to decrease DL MCS"
@@ -77,6 +78,7 @@
 #define HLP_MACRLC_PUCCH_RSSI_THRESHOLD "Limits PUCCH TPC commands based on RSSI to prevent ADC railing. Value range [-1280, 0], unit 0.1 dBm/dBFS"
 #define HLP_MACRLC_STATS_MAX_UE "Maximum number of UEs before disabling periodical output (0 to disable)"
 #define HLP_MACRLC_SPATIAL_STREAM_INDEX "Array of RU antenna ports / eAxCIDs to be used by L1. This may only be applicable for MU-MIMO. Value range [0, 15]"
+#define HLP_MACRLC_SRS_PRG_SIZE "PRG size in RBs of the SRS channel estimate reported by L1 (SRS PDU prgSize). Value range [1, 272]"
 
 /*-------------------------------------------------------------------------------------------------------------------------------------------------------*/
 /*                                            MacRLC  configuration parameters                                                                           */
@@ -127,6 +129,7 @@
   {MACRLC_STATS_MAX_UE,                HLP_MACRLC_STATS_MAX_UE,  0, .iptr=NULL,   .defintval=8,               TYPE_INT,     0}, \
   {MACRLC_SPATIAL_STREAM_IDX,          HLP_MACRLC_SPATIAL_STREAM_INDEX, \
                                                                                0, .uptr=NULL,   .defintarrayval=0,          TYPE_INTARRAY,0}, \
+  {MACRLC_SRS_PRG_SIZE,                HLP_MACRLC_SRS_PRG_SIZE,  0, .u16ptr=NULL, .defintval=1,               TYPE_UINT16,  0}, \
 }
 // clang-format off
 
@@ -174,6 +177,7 @@
   { .s2 =  { config_check_intrange, {-1280, 0}} }, /* PUCCH RSSI threshold range */ \
   { .s5 = { NULL } }, \
   { .s2 = { NULL } }, /* Spatial stream index */ \
+  { .s2 = { config_check_intrange, {1, 272} } }, /* SRS PRG size */ \
 }
 
 /*---------------------------------------------------------------------------------------------------------------------------------------------------------*/

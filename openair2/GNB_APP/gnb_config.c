@@ -1844,6 +1844,9 @@ void RCconfig_nr_macrlc(configmodule_interface_t *cfg, nr_cell_sched_t **out_cel
 
       // Read spatial stream indices
       config_spatial_stream_index(params, np, &cell->radio_config, num_tx);
+      // radio_config was already copied from config in mac_top_init_gNB(), so set it on the cell directly
+      cell->radio_config.srs_prg_size = *gpd(params, np, MACRLC_SRS_PRG_SIZE)->u16ptr;
+      LOG_I(GNB_APP, "SRS channel estimate PRG size: %d RBs\n", cell->radio_config.srs_prg_size);
 
       // triggers also PHY initialization in case we have L1 via FAPI
       nr_mac_config_scc(nrmac, cell, scc, &config);
