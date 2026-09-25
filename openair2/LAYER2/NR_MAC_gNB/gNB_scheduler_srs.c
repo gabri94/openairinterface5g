@@ -562,7 +562,7 @@ void nr_srs_dl_reciprocity_update(nr_cell_sched_t *cell,
   const int iq_bits = (m->normalized_iq_representation == 0) ? 8 : 16;
   const NR_ServingCellConfigCommon_t *scc = cell->common_channels.ServingCellConfigCommon;
   long max_layers = UE->sc_info.maxMIMO_Layers_PDSCH ? *UE->sc_info.maxMIMO_Layers_PDSCH
-                                                     : ue_supported_dl_layers(scc, UE->capability);
+                                                     : ue_supported_dl_layers(scc, UE->capability, UE->uecap_fs_ids.dl_feature_set_percc_id);
   if (max_layers < 1)
     max_layers = 1;
   if (max_layers > NR_SRS_DL_RI_MAX_PORTS)
