@@ -287,6 +287,9 @@ In the `MACRLCs` section of the gNB/DU configuration file:
   (required for `bf_method = "predefined"` and `"dynamic"`; with a digital beam
   table, each index must name one of its beams)
 * `dbt_file`: path to a CSV file holding the digital beam table
+* `srs_prg_size` (default 1): PRG size in RBs of the SRS channel estimate that L1
+  reports (`prgSize` of the SRS PDU), from 1 to 272. Larger values make L1
+  average the estimate over wider PRGs and shrink the reported channel matrix
 * `pusch_RSSI_Threshold`: Value between -1280 and 0 which maps to range
    from -128.0 dBm/dBFS to 0.0 dBm/dBFS. This limits PUSCH TPC commands in
    case RSSI reaches the threshold and prevents ADC railing. Unit depends on
