@@ -45,4 +45,22 @@ if (ENABLE_PHY_GPU)
 
   add_executable(bench_inner_rx_gpu bench_inner_rx_gpu.cpp)
   target_link_libraries(bench_inner_rx_gpu PRIVATE nr_phy_gpu PHY_NR nr_phy_common minimal_lib)
+
+  # multi-UE PDSCH chain on the GPU (channel estimation, inner RX, libldpc_cuda), LLRs never leave the device
+  if (ENABLE_LDPC_CUDA)
+    add_executable(bench_multi_ue_rx_gpu bench_multi_ue_rx_gpu.c bench_multi_ue_rx_gpu_k.cu)
+    if (LDPC_GPU_BACKEND STREQUAL "HIP")
+      set_source_files_properties(bench_multi_ue_rx_gpu_k.cu PROPERTIES LANGUAGE HIP)
+      set_target_properties(bench_multi_ue_rx_gpu PROPERTIES HIP_ARCHITECTURES "${NR_PHY_GPU_HIP_ARCHS}")
+    else()
+      set_target_properties(bench_multi_ue_rx_gpu PROPERTIES CUDA_ARCHITECTURES "${NR_PHY_GPU_CUDA_ARCHS}")
+    endif()
+    # crc_byte, utils whole: check_crc, cpu_meas_enabled, pushTpool are resolved from the executable by libldpc_cuda.so (as for ldpctest)
+    target_link_libraries(bench_multi_ue_rx_gpu PRIVATE nr_phy_gpu nr_phy_common
+                          -Wl,--start-group UTIL SIMU PHY_COMMON PHY_NR_COMMON PHY_NR -Wl,--end-group
+                          m pthread dl ${T_LIB} -Wl,--whole-archive crc_byte utils thread-pool -Wl,--no-whole-archive)
+    # libldpc_cuda.so resolves the logging and CRC symbols from the executable: export them (C linker, -rdynamic)
+    set_target_properties(bench_multi_ue_rx_gpu PROPERTIES LINKER_LANGUAGE C ENABLE_EXPORTS ON)
+    add_dependencies(bench_multi_ue_rx_gpu ldpc_cuda ldpc)
+  endif()
 endif()
