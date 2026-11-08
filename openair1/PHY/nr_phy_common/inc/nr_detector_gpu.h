@@ -23,6 +23,9 @@ extern "C" {
 /// Scratch for the L-best adaptive window (list of the REs searched in full), sized for max_re REs per call.
 typedef struct nr_gpu_det_ws nr_gpu_det_ws_t;
 nr_gpu_det_ws_t *nr_gpu_det_ws_alloc(uint32_t max_re);
+/// Same, for nr_gpu_inner_rx_2layer calls of up to max_sym (<= NR_GPU_MAX_BATCH_SYM) symbol descriptors: the symbols
+/// of several PDSCHs (UEs) in one launch, when they share nb_rx, the modulation, the detector, lambda and the shift.
+nr_gpu_det_ws_t *nr_gpu_det_ws_alloc_batch(uint32_t max_re, uint32_t max_sym);
 void nr_gpu_det_ws_free(nr_gpu_det_ws_t *ws);
 
 /// L-best (pattern 1: 3x3 window, full grid on the REs below NR_LBEST_WIDE_SINR*) or full ML (pattern 3), 64QAM or
@@ -58,6 +61,7 @@ int nr_gpu_llr_2layer_mmse(const c16_t *z0,
 /// device-accessible pointers.
 typedef nr_irx_sym_t nr_gpu_rx_sym_t;
 #define NR_GPU_MAX_SYM NR_IRX_MAX_SYM
+#define NR_GPU_MAX_BATCH_SYM 32768 ///< grid.y and the 15 symbol bits of the L-best list index
 enum { NR_GPU_DET_MMSE = NR_IRX_DET_MMSE, NR_GPU_DET_LBEST = NR_IRX_DET_LBEST, NR_GPU_DET_ML = NR_IRX_DET_ML };
 
 /// Front end of the 2-layer inner RX for one symbol, bit-exact with nr_channel_compensation (nb_layers = 2, rho):
@@ -73,7 +77,7 @@ int nr_gpu_compensation_2layer(const c16_t *rxF,
                                c16_t *out[8],
                                void *stream);
 
-/// Fused 2-layer inner RX of nsym (<= NR_GPU_MAX_SYM) symbols in one launch: front end (MRC with the CPE, magnitudes,
+/// Fused 2-layer inner RX of nsym (<= the workspace's max_sym, NR_GPU_MAX_SYM for nr_gpu_det_ws_alloc) symbols in one launch: front end (MRC with the CPE, magnitudes,
 /// Gram), detector, the output shift of nr_compute_ML_llr / nr_compute_MMSE_llr, layer demap and descrambling into
 /// each symbol's codeword slice. MMSE: Qm 2-8; L-best / ML: the exact int16 ML for QPSK / 16QAM, the fp32 metric for
 /// 64QAM / 256QAM. ws holds the descriptors (the previous call on it must have completed) and must hold 2 x the REs

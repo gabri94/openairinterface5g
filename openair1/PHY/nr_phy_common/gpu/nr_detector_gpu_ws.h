@@ -14,6 +14,7 @@ struct nr_gpu_det_ws {
   uint32_t *idx;
   uint32_t *cnt;
   uint32_t max_re;
+  uint32_t max_sym; ///< capacity of desc (symbol descriptors per call)
   // symbol descriptors of nr_gpu_inner_rx_2layer, mapped pinned (host side, device alias): by pointer, not as a kernel
   // argument, which the kernels would copy to per-thread scratch once they take an address inside it (50x slower)
   nr_irx_sym_t *desc, *desc_d;

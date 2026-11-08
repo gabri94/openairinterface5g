@@ -153,11 +153,19 @@ inline int launch_ok()
 
 extern "C" nr_gpu_det_ws_t *nr_gpu_det_ws_alloc(uint32_t max_re)
 {
+  return nr_gpu_det_ws_alloc_batch(max_re, NR_IRX_MAX_SYM);
+}
+
+extern "C" nr_gpu_det_ws_t *nr_gpu_det_ws_alloc_batch(uint32_t max_re, uint32_t max_sym)
+{
+  if (max_sym < 1 || max_sym > NR_GPU_MAX_BATCH_SYM)
+    return NULL;
   nr_gpu_det_ws_t *ws = (nr_gpu_det_ws_t *)calloc(1, sizeof(*ws));
   if (!ws)
     return NULL;
   ws->max_re = max_re;
-  const size_t dbytes = NR_IRX_MAX_SYM * sizeof(*ws->desc);
+  ws->max_sym = max_sym;
+  const size_t dbytes = max_sym * sizeof(*ws->desc);
 #if defined(GPU_USE_HIP)
   const bool desc_ok = hipHostMalloc((void **)&ws->desc, dbytes, hipHostMallocMapped | hipHostMallocNonCoherent) == hipSuccess;
 #else

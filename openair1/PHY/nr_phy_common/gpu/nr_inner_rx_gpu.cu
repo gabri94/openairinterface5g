@@ -296,7 +296,7 @@ extern "C" int nr_gpu_inner_rx_2layer(const nr_gpu_rx_sym_t *sym,
                                       nr_gpu_det_ws_t *ws,
                                       void *stream)
 {
-  if (nsym < 1 || nsym > NR_GPU_MAX_SYM || nb_rx < 1 || nb_rx > NR_IRX_MAX_RX || !ws)
+  if (!ws || nsym < 1 || (uint32_t)nsym > ws->max_sym || nb_rx < 1 || nb_rx > NR_IRX_MAX_RX)
     return -1;
   uint32_t maxlen = 0, total = 0;
   for (int k = 0; k < nsym; k++) {
