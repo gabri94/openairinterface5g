@@ -42,8 +42,11 @@
 typedef hipError_t    gpuError_t;
 typedef hipStream_t   gpuStream_t;
 typedef hipEvent_t    gpuEvent_t;
+typedef hipPointerAttribute_t gpuPointerAttributes_t;
 
 #define gpuSuccess hipSuccess
+#define gpuPointerGetAttributes hipPointerGetAttributes
+#define gpuMemoryTypeDevice hipMemoryTypeDevice
 
 #define gpuMemcpyHostToDevice   hipMemcpyHostToDevice
 #define gpuMemcpyDeviceToHost   hipMemcpyDeviceToHost
@@ -53,8 +56,11 @@ typedef hipEvent_t    gpuEvent_t;
 typedef cudaError_t    gpuError_t;
 typedef cudaStream_t   gpuStream_t;
 typedef cudaEvent_t    gpuEvent_t;
+typedef struct cudaPointerAttributes gpuPointerAttributes_t;
 
 #define gpuSuccess cudaSuccess
+#define gpuPointerGetAttributes cudaPointerGetAttributes
+#define gpuMemoryTypeDevice cudaMemoryTypeDevice
 
 #define gpuMemcpyHostToDevice   cudaMemcpyHostToDevice
 #define gpuMemcpyDeviceToHost   cudaMemcpyDeviceToHost
@@ -90,6 +96,7 @@ typedef cudaEvent_t    gpuEvent_t;
 #define gpuMalloc              hipMalloc
 #define gpuFree                hipFree
 #define gpuMemset              hipMemset
+#define gpuMemcpyToSymbol      hipMemcpyToSymbol
 #define gpuMemsetAsync         hipMemsetAsync
 #define gpuMemset2DAsync       hipMemset2DAsync
 #define gpuHostAlloc           hipHostAlloc
@@ -156,6 +163,7 @@ typedef cudaEvent_t    gpuEvent_t;
 #define gpuMalloc              cudaMalloc
 #define gpuFree                cudaFree
 #define gpuMemset              cudaMemset
+#define gpuMemcpyToSymbol      cudaMemcpyToSymbol
 #define gpuMemsetAsync         cudaMemsetAsync
 #define gpuMemset2DAsync       cudaMemset2DAsync
 #define gpuHostAlloc           cudaHostAlloc

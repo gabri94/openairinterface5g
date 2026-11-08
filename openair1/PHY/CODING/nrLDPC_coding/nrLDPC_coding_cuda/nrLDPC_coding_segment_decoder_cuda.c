@@ -33,7 +33,6 @@
 #define PRINT_CRC_CHECK(a)
 #endif
 
-#define USE_GPU_FOR_RM_DEINTER 1
 
 gpuStream_t decoderStreams[MAX_NUM_NR_DLSCH_SEGMENTS_PER_LAYER * 4];
 
@@ -72,195 +71,125 @@ extern int32_t LDPCdecoder_cuda(t_nrLDPC_dec_params *p_decParams,
                                 t_nrLDPC_time_stats *p_profiler,
                                 decode_abort_t *ab);
 
-void nr_process_decode_segment_cuda(nrLDPC_TB_decoding_parameters_t *segs)
+// LLRs already in device memory (a GPU inner receiver wrote them): the deinterleaver reads them in place
+static bool llr_on_device(const void *p)
 {
-  // arg points to RDATA array (nrLDPC_decoding_parameters_t *RDATA)
-  DevAssert(segs != NULL);
+  gpuPointerAttributes_t a;
+  if (gpuPointerGetAttributes(&a, p) != gpuSuccess) {
+    (void)gpuGetLastError();
+    return false;
+  }
+  return a.type == gpuMemoryTypeDevice;
+}
 
-  // use seg0 as canonical
-  const int C = segs->C;
-  const int Z = segs->Z;
-  const int Kc = segs->BG == 2 ? 52 : 68;
-  const int K = segs->K;
-  const int Kprime = K - segs->F;
-  const int segLen = Kc * Z; // int16 length; after packing we store int8 [segLen]
+const uint8_t *ldpc_cuda_seg_ok(void);
+static uint8_t *group_out;
+const int nr_ldpc_cuda_group_seg = NR_LDPC_CUDA_GROUP_SEG;
+
+/// TBs decoded together (one rate dematching per TB into its code blocks' slots of p_llr_dev, one decoder pass over
+/// all the code blocks) must share these; at most NR_LDPC_CUDA_GROUP_SEG code blocks per group
+bool nr_ldpc_cuda_same_group(const nrLDPC_TB_decoding_parameters_t *a, const nrLDPC_TB_decoding_parameters_t *b)
+{
+  return a->BG == b->BG && a->Z == b->Z && a->K == b->K && a->F == b->F && a->R == b->R
+         && a->max_ldpc_iterations == b->max_ldpc_iterations && crcType(a->C, a->A) == crcType(b->C, b->A)
+         && lenWithCrc(a->C, a->A) == lenWithCrc(b->C, b->A);
+}
+
+void nr_process_decode_group_cuda(nrLDPC_TB_decoding_parameters_t **tbs, int n)
+{
+  DevAssert(n > 0 && tbs[0] != NULL);
+  nrLDPC_TB_decoding_parameters_t *t0 = tbs[0];
+  const int Z = t0->Z;
+  const int K = t0->K;
+  const int Kprime = K - t0->F;
   t_nrLDPC_time_stats procTime = {0};
-  t_nrLDPC_time_stats *p_procTime = &procTime;
 
-#ifdef USE_GPU_FOR_RM_DEINTER
-  int E1 = segs->E;
-  int E2 = segs->E2;
-  int r_firstE2 = segs->first_rE2;
-
-  LOG_D(NR_PHY, "locking decoder (llr %p)\n", segs->llr);
   pthread_mutex_lock(&decoder_mutex);
-
-  *segs->processedSegments = 0;
-
-  // for PCIe GPU copy llrs to device memory
-  if (!pageable && !integrated) {
-    LOG_I(NR_PHY, "gpuMemcpyAsynch llr->harq_f_dev\n");
-    gpuMemcpyAsync_or_fail(harq_f_dev,
-                           segs->llr,
-                           ((r_firstE2 * E1) + (C - r_firstE2) * E2) * sizeof(int16_t),
-                           gpuMemcpyHostToDevice,
-                           decoderStreams[0]);
+  // per TB: (copy to the device,) deinterleave, rate dematching into the HARQ buffer and the TB's code block slots
+  int nseg = 0;
+  for (int i = 0; i < n; i++) {
+    nrLDPC_TB_decoding_parameters_t *segs = tbs[i];
+    const int C = segs->C, E1 = segs->E, E2 = segs->E2, r_firstE2 = segs->first_rE2;
+    AssertFatal(nseg + C <= NR_LDPC_CUDA_GROUP_SEG, "group of %d + %d code blocks\n", nseg, C);
+    AssertFatal(segs->harq_unique_pid < d_array_size, "harq_unique_pid %d > %d\n", segs->harq_unique_pid, d_array_size);
+    *segs->processedSegments = 0;
+    const bool llr_dev = pageable || integrated || llr_on_device(segs->llr);
+    if (!llr_dev)
+      gpuMemcpyAsync_or_fail(harq_f_dev,
+                             segs->llr,
+                             ((r_firstE2 * E1) + (C - r_firstE2) * E2) * sizeof(int16_t),
+                             gpuMemcpyHostToDevice,
+                             decoderStreams[0]);
+    launch_deinterleave_i16(segs->Qm, E1, E2, C, r_firstE2, harq_e_dev, llr_dev ? segs->llr : harq_f_dev, decoderStreams, 0);
+    nr_rate_matching_ldpc_rx_cuda(segs->tbslbrm,
+                                  segs->BG,
+                                  Z,
+                                  harq_d_array[segs->harq_unique_pid],
+                                  harq_e_dev,
+                                  p_llr_dev + (size_t)nseg * 68 * NR_LDPC_ZMAX,
+                                  K,
+                                  C,
+                                  segs->rv_index,
+                                  segs->d_to_be_cleared,
+                                  E1,
+                                  E2,
+                                  r_firstE2,
+                                  segs->F,
+                                  Kprime - 2 * Z,
+                                  decoderStreams,
+                                  0);
+    nseg += C;
   }
-#if 0
-  if (1/*segs->rv_index==2*/)
-    for (int r=0;r<C;r++) {
-      int roffset = r < r_firstE2 ? r*E1 : ((r_firstE2*E1)+(r-r_firstE2)*E2);
-      int E = r < r_firstE2 ? E1 : E2;
-      for (int i=0;i<16;i++) {
-         printf("f(%d,%d) %d\n",r,i,segs->llr[roffset + i]);
-      }
-    }
-#endif
-  LOG_D(NR_PHY, "deinter: e %p llr %p\n", harq_e_dev, pageable || integrated ? segs->llr : harq_f_dev);
-  launch_deinterleave_i16(segs->Qm,
-                          E1,
-                          E2,
-                          C,
-                          r_firstE2,
-                          harq_e_dev,
-                          pageable || integrated ? segs->llr : harq_f_dev,
-                          decoderStreams,
-                          0);
-#if 0
-  gpuError_t err;
-  if (1/*segs->rv_index == 2*/) {
-    int16_t elocal[E2];
-    for (int r=0;r<C;r++) {
-      int E = r<r_firstE2 ? E1 : E2;
-      int r_off = r<r_firstE2 ? (r*E1) : ((r_firstE2*E1) + (r-r_firstE2)*E2);
-      gpuMemcpyAsync_or_fail(elocal,&harq_e_dev[r_off],sizeof(elocal),gpuMemcpyDeviceToHost,decoderStreams[0]);
-      for (int i=0;i<E;i++) {
-	 if (elocal[i] != segs->llr[r_off + ((i<(E/2)) ? 2*i : (-E+1+2*i))])  { 
-            printf("e(%d,%d,%d) %d",r,i,E,elocal[i]);
-            printf("(%d**)\n",segs->llr[r_off + ((i<(E/2)) ? 2*i : -E+1+2*i)]); 
-	 }
-      }
-    }
-  }
-#endif
-  // printf("Running RM with id %d, d_to_be_cleared %d, rv_idx %d, Z %d, C %d, E1 %d, E2 %d, F %d,r_firstE2
-  // %d\n",segs->harq_unique_pid,segs->d_to_be_cleared,segs->rv_index,Z,C,E1,E2,segs->F,r_firstE2);
-#if 0
-  if (segs->d_to_be_cleared == 1) err = gpuMemsetAsync(harq_d_array[segs->harq_unique_pid],0,C*68*Z*sizeof(int16_t),decoderStreams[0]);
-  AssertFatal(err==gpuSuccess,"gpuMemsetAsync failed with error %s on harq_d_array[%d] %p for %d bytes\n",gpuGetErrorString(err),segs->harq_unique_pid,harq_d_array[segs->harq_unique_pid],C*68*Z*sizeof(int16_t));
-  gpuMemsetAsync(p_llr_dev,0,C*68*Z*sizeof(int8_t),decoderStreams[0]);
-  AssertFatal(err==gpuSuccess,"gpuMemsetAsync failed on p_llr_dev %p\n",p_llr_dev);
-#endif
-  AssertFatal(segs->harq_unique_pid < d_array_size, "harq_unique_pid %d > %d\n", segs->harq_unique_pid, d_array_size);
-  nr_rate_matching_ldpc_rx_cuda(segs->tbslbrm,
-                                segs->BG,
-                                Z,
-                                harq_d_array[segs->harq_unique_pid],
-                                harq_e_dev,
-                                p_llr_dev,
-                                K,
-                                C, // TB segments count
-                                segs->rv_index,
-                                segs->d_to_be_cleared,
-                                E1,
-                                E2,
-                                r_firstE2,
-                                segs->F,
-                                Kprime - 2 * Z,
-                                decoderStreams,
-                                0);
   // the 2Z punctured systematic LLRs of every code block, in one strided memset; the code blocks are 68 x ZMAX apart
-  // in p_llr_dev (rate dematching output, decoder input), not segLen = 68 x Z
-  gpuMemset2DAsync(p_llr_dev, 68 * NR_LDPC_ZMAX, 0, 2 * Z, C, decoderStreams[0]);
-  for (int r = 0; r < C; ++r) {
-#if 0
-     int8_t llr_local[segLen];
-     if (r==1 && segs->rv_index==2) {
-       gpuMemcpyAsync_or_fail(llr_local,p_llr_dev+(size_t)r*segLen,sizeof(int8_t)*segLen,gpuMemcpyDeviceToHost,decoderStreams[0]);
-       for (int i=0;i<segLen;i++) printf("llr(%d,%d,%d/%d) %d\n",segs->rv_index,r,i,segLen,llr_local[i]);
-     }
-#endif
-  }
+  // in p_llr_dev (rate dematching output, decoder input), not 68 x Z
+  gpuMemset2DAsync(p_llr_dev, 68 * NR_LDPC_ZMAX, 0, 2 * Z, nseg, decoderStreams[0]);
 
-#else // USE_GPU_FOR_RM_DEINTER
-  int16_t *z_local = (int16_t *)alloca(sizeof(int16_t) * segLen); // segLen is safe small
-  for (int r = 0; r < C; ++r) {
-    // deinterleave
-    int16_t *harq_e = (int16_t *)alloca(sizeof(int16_t) * segs->segments[r].E);
-    //    for (int i=0;i<segs->segments[r].E;i++) printf("llr_in[%d] %d\n",i,segs->segments[r].llr[i]);
-    nr_deinterleaving_ldpc(segs->segments[r].E, segs->Qm, harq_e, segs->segments[r].llr);
-    //    for (int i=0;i<16;i++) printf("harq_e[%d] %d\n",i,harq_e[i]);
-    // rate matching
-    if (nr_rate_matching_ldpc_rx(segs->tbslbrm,
-                                 segs->BG,
-                                 Z,
-                                 segs->segments[r].d,
-                                 harq_e,
-                                 C, // TB segments count
-                                 segs->rv_index,
-                                 segs->segments[r].d_to_be_cleared,
-                                 segs->segments[r].E,
-                                 segs->F,
-                                 Kprime - 2 * Z)
-        == -1) {
-      LOG_E(PHY, "rate matching failed seg %d\n", r);
-      memset(segs->segments[r].c, 0, K);
-      //*rdata->decodeSuccess = false;
-      continue; // skip this segment
-    }
-    segs->segments[r].d_to_be_cleared = false;
-
-    memset(z_local, 0, sizeof(int16_t) * 2 * Z);
-    memset(z_local + Kprime, 127, sizeof(int16_t) * segs->F);
-    memcpy(z_local + 2 * Z, segs->segments[r].d, (size_t)(Kprime - 2 * Z) * sizeof(int16_t));
-    memcpy(z_local + K, segs->segments[r].d + (K - 2 * Z), (size_t)(Kc * Z - K) * sizeof(int16_t));
-
-    // pack int16 -> int8 into llrBuffer[r * segLen]
-    simde__m128i *pv = (simde__m128i *)z_local;
-    simde__m128i *pl = (simde__m128i *)(llrBuffer + (size_t)r * segLen);
-    int vecCount = ((Kc * Z) >> 4);
-    for (int j = 0, idx = 0; j < vecCount; ++j, idx += 2) {
-      pl[j] = simde_mm_packs_epi16(pv[idx], pv[idx + 1]);
-    }
-  }
-#endif
-
-  start_meas(&segs->ts_ldpc_decode);
-
+  start_meas(&t0->ts_ldpc_decode);
   t_nrLDPC_dec_params decParams = {.check_crc = check_crc};
   decParams.Z = Z;
-  decParams.R = segs->R;
-  decParams.BG = segs->BG;
-  decParams.crc_type = crcType(C, segs->A);
-  decParams.Kprime = lenWithCrc(C, segs->A);
-  decParams.n_segments = C;
+  decParams.R = t0->R;
+  decParams.BG = t0->BG;
+  decParams.crc_type = crcType(t0->C, t0->A);
+  decParams.Kprime = lenWithCrc(t0->C, t0->A);
+  decParams.n_segments = nseg;
   decParams.outMode = nrLDPC_outMode_BIT;
-  decParams.numMaxIter = segs->max_ldpc_iterations;
+  decParams.numMaxIter = t0->max_ldpc_iterations;
+  uint8_t *out = n == 1 ? t0->c : group_out;
+  LDPCdecoder_cuda(&decParams, p_llr_dev, out, &procTime, t0->abort_decode);
+  stop_meas(&t0->ts_ldpc_decode);
 
-  LOG_D(NR_PHY, "decoder (llr %p): %d segments, Z %d, R %d \n", segs->llr, C, Z, segs->R);
-
-  int decodeIterations = LDPCdecoder_cuda(&decParams, p_llr_dev, segs->c, p_procTime, segs->abort_decode);
-  stop_meas(&segs->ts_ldpc_decode);
-
-  if (decodeIterations <= segs->max_ldpc_iterations) {
-    *segs->processedSegments = C;
-    for (int r = 0; r < C; r++)
-      segs->decodeSuccess[r] = true;
-    LOG_D(NR_PHY, "Set all segs->decodeSuccess to true\n");
-  } else {
-    memset(segs->c, 0, C * (K >> 3));
-    for (int r = 0; r < C; r++)
-      segs->decodeSuccess[r] = false;
-    LOG_D(NR_PHY, "Set all segs->decodeSuccess to false\n");
+  // per code block results, decoded bits to each TB
+  const uint8_t *ok = ldpc_cuda_seg_ok();
+  const int cb_bytes = K >> 3;
+  nseg = 0;
+  for (int i = 0; i < n; i++) {
+    nrLDPC_TB_decoding_parameters_t *segs = tbs[i];
+    if (n > 1)
+      memcpy(segs->c, out + (size_t)nseg * cb_bytes, (size_t)segs->C * cb_bytes);
+    uint32_t good = 0;
+    for (int r = 0; r < (int)segs->C; r++) {
+      segs->decodeSuccess[r] = ok[nseg + r];
+      if (ok[nseg + r])
+        good++;
+      else
+        memset(segs->c + (size_t)r * cb_bytes, 0, cb_bytes);
+    }
+    *segs->processedSegments = good;
+    nseg += segs->C;
   }
-  LOG_D(NR_PHY, "unlocking decoder (llr %p)\n", segs->llr);
   pthread_mutex_unlock(&decoder_mutex);
+}
+
+void nr_process_decode_segment_cuda(nrLDPC_TB_decoding_parameters_t *segs)
+{
+  nr_process_decode_group_cuda(&segs, 1);
 }
 
 #define MAXE 4 * 14 * 273 * 12 * 8 // 4 antennas, 14 symbols, 273 PRBs, 12 RE/prb, 8 bits/RE
 
 void LDPCint_rm_init(int max_num_pxsch)
 {
+  group_out = gpuHostAlloc_or_fail(NR_LDPC_CUDA_GROUP_SEG * (22 * NR_LDPC_ZMAX / 8), gpuHostAllocDefault);
   LOG_I(NR_PHY, "RM init for %d pxsch\n", max_num_pxsch);
   LOG_I(NR_PHY, "Allocating device array for harq_d/harq_e \n");
   harq_e_dev = gpuMalloc_or_fail(MAXE * sizeof(int16_t));

@@ -309,6 +309,7 @@ void init_decoder_gpu_structures()
   for (int i = 0; i < MAX_GRAPH_CACHE_SIZE; i++) {
     if (gpu_graph_cache[i].bridge_ptr == NULL) {
       gpu_graph_cache[i].bridge_ptr = gpuHostAlloc_or_fail(sizeof(ldpc_cuda_bridge_t), gpuHostAllocMapped);
+      memset(gpu_graph_cache[i].bridge_ptr, 0, sizeof(ldpc_cuda_bridge_t));
 
       gpu_graph_cache[i].bridge_ptr->p_llr_ptr = NULL;
       gpu_graph_cache[i].bridge_ptr->p_out_ptr = NULL;
@@ -320,6 +321,7 @@ void init_decoder_gpu_structures()
   for (int i = 0; i < 8; i++) {
     if (stream_bridges[i] == NULL) {
       stream_bridges[i] = gpuHostAlloc_or_fail(sizeof(ldpc_cuda_bridge_t), gpuHostAllocMapped);
+      memset(stream_bridges[i], 0, sizeof(ldpc_cuda_bridge_t));
       stream_bridges[i]->p_llr_ptr = NULL;
       stream_bridges[i]->p_out_ptr = NULL;
     }
@@ -363,6 +365,10 @@ bool encoder_streamsCreated = false;
 gpuStream_t encoderStreams[4];
 void cuda_support_init();
 
+extern uint8_t *ldpc_seg_done_dev;
+static uint8_t *ldpc_seg_done_host;
+static uint8_t ldpc_seg_ok[NR_LDPC_CUDA_MAX_SEG];
+
 int32_t LDPCinit_cuda()
 {
   if (cuda_support_set == 0) {
@@ -383,6 +389,10 @@ int32_t LDPCinit_cuda()
     encoder_streamsCreated = true;
   }
   printf("CUDA LDPC decoder initiating\n");
+  extern void ldpc_cuda_early_stop_init(void);
+  ldpc_cuda_early_stop_init();
+  if (!ldpc_seg_done_host)
+    ldpc_seg_done_host = gpuHostAlloc_or_fail(NR_LDPC_CUDA_MAX_SEG, gpuHostAllocDefault);
   cuda_support_init_decoder();
   init_decoder_graphs();
   init_decoder_gpu_structures();
@@ -489,6 +499,19 @@ static inline uint32_t nrLDPC_decoder_core_dynamic(int8_t* p_llr,
   // Output size safety: assume worst-case unpacked bytes (K * n_segments)
   size_t total_output_size = n_segments * K * sizeof(int8_t);
 
+  // CRC on the GPU after every iteration (early termination), when the code blocks' CRC is byte aligned
+  static const uint32_t crc_poly[4] = {0x864cfb00, 0x80006300, 0x10210000, 0x9B000000}; // CRC24_A, CRC24_B, CRC16, CRC8
+  static const uint32_t crc_len[4] = {24, 24, 16, 8};
+  const int ct = p_decParams->crc_type;
+  AssertFatal(n_segments <= NR_LDPC_CUDA_MAX_SEG, "%d code blocks in one decode\n", n_segments);
+  static int cpu_crc = -1; // LDPC_CUDA_CPU_CRC: CRC on the CPU after the copy back, no early termination
+  if (cpu_crc < 0)
+    cpu_crc = getenv("LDPC_CUDA_CPU_CRC") != NULL;
+  const bool gpu_crc = p_decParams->check_crc && outMode == nrLDPC_outMode_BIT && ct >= 0 && ct < 4 && Z % 8 == 0
+                       && (p_decParams->Kprime - crc_len[ct]) % 8 == 0 && !cpu_crc;
+  const uint32_t call_poly = gpu_crc ? crc_poly[ct] : 0, call_len = gpu_crc ? crc_len[ct] : 0, call_bits = p_decParams->Kprime;
+#define SET_CRC(br) ((br)->crc_poly = call_poly, (br)->crc_len = call_len, (br)->crc_bits = call_bits)
+
 /*
   // for debug, remember to remove it---------
   cuda_graph_breaker = 1; // skipping all the graph recording
@@ -510,6 +533,7 @@ static inline uint32_t nrLDPC_decoder_core_dynamic(int8_t* p_llr,
       // === Cache HIT: Execute Recorded Graph ===
       gpu_graph_cache[found_idx].bridge_ptr->p_llr_ptr = p_llr_dev;
       gpu_graph_cache[found_idx].bridge_ptr->p_out_ptr = (pageable || integrated) ? p_out : p_out_dev;
+      SET_CRC(gpu_graph_cache[found_idx].bridge_ptr);
 
       err_core = nrLDPC_decoder_cuda_GraphExecute(gpu_graph_cache[found_idx].exec,
                                                   decoderStreams[0],
@@ -536,6 +560,7 @@ static inline uint32_t nrLDPC_decoder_core_dynamic(int8_t* p_llr,
       // Use the determined pointers (Device ptrs for PCIe, Host ptrs for GH200)
       gpu_graph_cache[new_idx].bridge_ptr->p_llr_ptr = p_llr_dev;
       gpu_graph_cache[new_idx].bridge_ptr->p_out_ptr = pageable || integrated ? p_out : p_out_dev;
+      SET_CRC(gpu_graph_cache[new_idx].bridge_ptr);
 
       err_core = nrLDPC_decoder_cuda_GraphRecord(gpu_graph_cache[new_idx].bridge_ptr,
                                                  numLLR,
@@ -582,6 +607,7 @@ static inline uint32_t nrLDPC_decoder_core_dynamic(int8_t* p_llr,
     ldpc_cuda_bridge_t* perpack_buffer = stream_bridges[0];
     perpack_buffer->p_llr_ptr = p_llr_dev;
     perpack_buffer->p_out_ptr = pageable || integrated ? p_out : p_out_dev;
+    SET_CRC(perpack_buffer);
 
     nrLDPC_decoder_cuda_NormalExecute(perpack_buffer,
                                       numLLR,
@@ -612,27 +638,25 @@ static inline uint32_t nrLDPC_decoder_core_dynamic(int8_t* p_llr,
     }
   }
 
+  if (gpu_crc)
+    gpuMemcpyAsync_or_fail(ldpc_seg_done_host, ldpc_seg_done_dev, n_segments, gpuMemcpyDeviceToHost, decoderStreams[0]);
   gpuStreamSynchronize(decoderStreams[0]);
-  if (p_decParams->check_crc) {
-    for (int r = 0; r < n_segments; r++) {
-      //      if (r<=1) for (int i=0;i<(K>>3);i++) printf("byte (%d,%d) %x\n",r,i,((uint8_t*)(p_out+r*(K>>3)))[i]);
-
-      if (!p_decParams->check_crc((uint8_t*)(p_out + (r * (K >> 3))), p_decParams->Kprime, p_decParams->crc_type)) {
-        LOG_D(PHY, "Segment %d/%d CRC NOK\n", r, n_segments);
-        return (1 + numMaxIter);
-      }
-      /*
-      uint8_t *b=(uint8_t*)(p_out + (r*(K>>3)));
-      int i=0;
-      if (b[K-2] == 0 && b[K - 1] == 0) {
-            while (b[i] == 0 && i < K)
-           i++;
-            if (i == K) {
-              LOG_E(PHY, "received all 0 pdu (K %d, r %d)\n",K,r);
-            }
-      }
-      */
-    }
+  // per code block result (ldpc_cuda_seg_ok()), the TB result as before
+  bool all_ok = true;
+  for (int r = 0; r < n_segments; r++) {
+    if (gpu_crc)
+      ldpc_seg_ok[r] = ldpc_seg_done_host[r];
+    else if (p_decParams->check_crc)
+      ldpc_seg_ok[r] = p_decParams->check_crc((uint8_t *)(p_out + (r * (K >> 3))), p_decParams->Kprime, p_decParams->crc_type) != 0;
+    else
+      ldpc_seg_ok[r] = 1;
+    all_ok &= ldpc_seg_ok[r];
   }
-  return numMaxIter;
+  return all_ok ? numMaxIter : 1 + numMaxIter;
+}
+
+/// result of each code block of the last LDPCdecoder_cuda() call (1: CRC passed, or no CRC check)
+const uint8_t *ldpc_cuda_seg_ok(void)
+{
+  return ldpc_seg_ok;
 }

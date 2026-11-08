@@ -17,6 +17,13 @@
 #include "nrLDPC_CUDA_mPassKernel_BG1.h"
 #include "nrLDPC_CUDA_shared_param.h"
 
+// early termination: per code block flag, set by ldpcCheckKernel_BG1 once its CRC passes; the decoder kernels
+// return at once for a done block (whole thread blocks: blockIdx.y is the code block)
+__device__ uint8_t *d_ldpc_seg_done;
+extern "C" {
+uint8_t *ldpc_seg_done_dev;
+}
+
 #ifndef JETSON_TARGET
 #define CUDA_THREADS 1024
 #define CUDA_BLOCKS_R13 30
@@ -75,6 +82,8 @@ __global__ void cnProcKernel_BG1_R13_int8_Edge(const int8_t *__restrict__ d_cnBu
   uint32_t row = (blockIdx.x << 2) + threadIdx.y;
 
   uint32_t segIdx = blockIdx.y;
+  if (d_ldpc_seg_done[segIdx])
+    return;
 
   if (row >= num_TotalBlocks_BG1_R13_Edge)
     return;
@@ -129,6 +138,8 @@ __global__ void cnProcKernel_BG1_R13_int8_Node(const int8_t *__restrict__ d_cnBu
   uint32_t row = (blockIdx.x << 2) + threadIdx.y;
 
   uint32_t segIdx = blockIdx.y;
+  if (d_ldpc_seg_done[segIdx])
+    return;
 
   if (row >= num_TotalBlocks_cn_BG1_R13_Node)
     return;
@@ -180,6 +191,8 @@ __global__ void bnProcKernel_BG1_R13_int8_Edge(const int8_t *__restrict__ d_bnPr
   uint32_t row = (blockIdx.x << 2) + threadIdx.y;
 
   uint32_t segIdx = blockIdx.y;
+  if (d_ldpc_seg_done[segIdx])
+    return;
 
   if (row >= num_TotalBlocks_BG1_R13_Edge)
     return;
@@ -223,6 +236,8 @@ __global__ void bnProcKernel_BG1_R13_int8_Node(const int8_t *__restrict__ d_bnPr
   uint32_t row = (blockIdx.x << 2) + threadIdx.y;
 
   uint32_t segIdx = blockIdx.y;
+  if (d_ldpc_seg_done[segIdx])
+    return;
 
   if (row >= num_TotalBlocks_bn_BG1_R13_Node)
     return;
@@ -290,6 +305,8 @@ __global__ void bnProcKernel_BG1_R13_int8_Edge_last(const int8_t *__restrict__ d
   uint32_t row = (blockIdx.x << 2) + threadIdx.y;
 
   uint32_t segIdx = blockIdx.y;
+  if (d_ldpc_seg_done[segIdx])
+    return;
 
   if (row >= num_TotalBlocks_BG1_R13_Edge)
     return;
@@ -333,6 +350,8 @@ __global__ void bnProcKernel_BG1_R13_int8_Node_last(const int8_t *__restrict__ d
   uint32_t row = (blockIdx.x << 2) + threadIdx.y;
 
   uint32_t segIdx = blockIdx.y;
+  if (d_ldpc_seg_done[segIdx])
+    return;
 
   if (row >= num_TotalBlocks_bn_BG1_R13_Node)
     return;
@@ -402,6 +421,8 @@ __global__ void cnProcKernel_BG1_R23_int8_Edge(const int8_t *__restrict__ d_cnBu
   uint32_t row = (blockIdx.x << 2) + threadIdx.y;
 
   uint32_t segIdx = blockIdx.y;
+  if (d_ldpc_seg_done[segIdx])
+    return;
 
   if (row >= num_TotalBlocks_BG1_R23_Edge)
     return;
@@ -456,6 +477,8 @@ __global__ void cnProcKernel_BG1_R23_int8_Node(const int8_t *__restrict__ d_cnBu
   uint32_t row = (blockIdx.x << 2) + threadIdx.y;
 
   uint32_t segIdx = blockIdx.y;
+  if (d_ldpc_seg_done[segIdx])
+    return;
 
   if (row >= num_TotalBlocks_cn_BG1_R23_Node)
     return;
@@ -506,6 +529,8 @@ __global__ void bnProcKernel_BG1_R23_int8_Edge(const int8_t *__restrict__ d_bnPr
   uint32_t row = (blockIdx.x << 2) + threadIdx.y;
 
   uint32_t segIdx = blockIdx.y;
+  if (d_ldpc_seg_done[segIdx])
+    return;
 
   if (row >= num_TotalBlocks_BG1_R23_Edge)
     return;
@@ -550,6 +575,8 @@ __global__ void bnProcKernel_BG1_R23_int8_Node(const int8_t *__restrict__ d_bnPr
   uint32_t row = (blockIdx.x << 2) + threadIdx.y;
 
   uint32_t segIdx = blockIdx.y;
+  if (d_ldpc_seg_done[segIdx])
+    return;
 
   if (row >= num_TotalBlocks_bn_BG1_R23_Node)
     return;
@@ -616,6 +643,8 @@ __global__ void bnProcKernel_BG1_R23_int8_Edge_last(const int8_t *__restrict__ d
   uint32_t row = (blockIdx.x << 2) + threadIdx.y;
 
   uint32_t segIdx = blockIdx.y;
+  if (d_ldpc_seg_done[segIdx])
+    return;
 
   if (row >= num_TotalBlocks_BG1_R23_Edge)
     return;
@@ -660,6 +689,8 @@ __global__ void bnProcKernel_BG1_R23_int8_Node_last(const int8_t *__restrict__ d
   uint32_t row = (blockIdx.x << 2) + threadIdx.y;
 
   uint32_t segIdx = blockIdx.y;
+  if (d_ldpc_seg_done[segIdx])
+    return;
 
   if (row >= num_TotalBlocks_bn_BG1_R23_Node)
     return;
@@ -726,6 +757,8 @@ __global__ void cnProcKernel_BG1_R89_int8_Edge(const int8_t *__restrict__ d_cnBu
   uint32_t row = (blockIdx.x << 2) + threadIdx.y;
 
   uint32_t segIdx = blockIdx.y;
+  if (d_ldpc_seg_done[segIdx])
+    return;
 
   if (row >= num_TotalBlocks_BG1_R89_Edge)
     return;
@@ -780,6 +813,8 @@ __global__ void cnProcKernel_BG1_R89_int8_Node(const int8_t *__restrict__ d_cnBu
   uint32_t row = (blockIdx.x << 2) + threadIdx.y;
 
   uint32_t segIdx = blockIdx.y;
+  if (d_ldpc_seg_done[segIdx])
+    return;
 
   if (row >= num_TotalBlocks_cn_BG1_R89_Node)
     return;
@@ -830,6 +865,8 @@ __global__ void bnProcKernel_BG1_R89_int8_Edge(const int8_t *__restrict__ d_bnPr
   uint32_t row = (blockIdx.x << 2) + threadIdx.y;
 
   uint32_t segIdx = blockIdx.y;
+  if (d_ldpc_seg_done[segIdx])
+    return;
 
   if (row >= num_TotalBlocks_BG1_R89_Edge)
     return;
@@ -874,6 +911,8 @@ __global__ void bnProcKernel_BG1_R89_int8_Node(const int8_t *__restrict__ d_bnPr
   uint32_t row = (blockIdx.x << 2) + threadIdx.y;
 
   uint32_t segIdx = blockIdx.y;
+  if (d_ldpc_seg_done[segIdx])
+    return;
 
   if (row >= num_TotalBlocks_bn_BG1_R89_Node)
     return;
@@ -940,6 +979,8 @@ __global__ void bnProcKernel_BG1_R89_int8_Edge_last(const int8_t *__restrict__ d
   uint32_t row = (blockIdx.x << 2) + threadIdx.y;
 
   uint32_t segIdx = blockIdx.y;
+  if (d_ldpc_seg_done[segIdx])
+    return;
 
   if (row >= num_TotalBlocks_BG1_R89_Edge)
     return;
@@ -984,6 +1025,8 @@ __global__ void bnProcKernel_BG1_R89_int8_Node_last(const int8_t *__restrict__ d
   uint32_t row = (blockIdx.x << 2) + threadIdx.y;
 
   uint32_t segIdx = blockIdx.y;
+  if (d_ldpc_seg_done[segIdx])
+    return;
 
   if (row >= num_TotalBlocks_bn_BG1_R89_Node)
     return;
@@ -1052,6 +1095,8 @@ __global__ void llrPreProc_Kernel_BG1_int8_BIG_stream(ldpc_cuda_bridge_t *d_buff
   uint32_t row = (blockIdx.x << 2) + threadIdx.y;
 
   uint32_t segIdx = blockIdx.y;
+  if (d_ldpc_seg_done[segIdx])
+    return;
   if (row >= num_TotalBlocks_BG1_R13_Edge)
     return;
 
@@ -1097,6 +1142,8 @@ __global__ void llrOutPut_Kernel_BG1_int8_BIG_stream(uint32_t R,
                                                      uint32_t K)
 {
   uint32_t segIdx = blockIdx.y;
+  if (d_ldpc_seg_done[segIdx])
+    return;
 
   int8_t *d_out = d_buffer->p_out_ptr;
 
@@ -1171,9 +1218,106 @@ static inline uint32_t get_lut_col_index_host(uint32_t Zc)
 //------------------------------------------------------------------------
 //------------------------------------------------------------------------
 
+
+// hard decision of the systematic bits of each code block not done yet (packed as llr2bitPacked_Kernel_BG1_int8, into
+// the output), CRC (as check_crc()), done flag on a match. One thread block per code block.
+__global__ void ldpcCheckKernel_BG1(const ldpc_cuda_bridge_t *b, const int8_t *__restrict__ d_llrRes, uint32_t Zc, uint32_t R)
+{
+  const uint32_t seg = blockIdx.x;
+  const uint32_t poly = b->crc_poly;
+  if (!poly || d_ldpc_seg_done[seg])
+    return;
+  __shared__ uint32_t T[256];
+  __shared__ uint8_t by[22 * NR_LDPC_ZMAX / 8];
+  for (uint32_t t = threadIdx.x; t < 256; t += blockDim.x) {
+    uint32_t c = t << 24, crc = 0;
+    for (int i = 0; i < 8; i++) {
+      crc = ((c ^ crc) & 0x80000000u) ? (crc << 1) ^ poly : crc << 1;
+      c <<= 1;
+    }
+    T[t] = crc;
+  }
+  const uint32_t zb = Zc >> 3, nbytes = 22 * zb;
+  const uint32_t *lut_Addr = (R == 13) ? d_llr2llrProcBufAddr_BG1_R13 : ((R == 89) ? d_llr2llrProcBufAddr_BG1_R89 : d_llr2llrProcBufAddr_BG1_R23);
+  const uint32_t *lut_Pos = (R == 13) ? d_llr2llrProcBufBnPos_BG1_R13 : ((R == 89) ? d_llr2llrProcBufBnPos_BG1_R89 : d_llr2llrProcBufBnPos_BG1_R23);
+  const int8_t *llr = d_llrRes + seg * NR_LDPC_MAX_NUM_LLR;
+  uint8_t *out = (uint8_t *)b->p_out_ptr + seg * nbytes;
+  for (uint32_t j = threadIdx.x; j < nbytes; j += blockDim.x) {
+    const uint32_t col = j / zb, z = (j - col * zb) << 3;
+    const int8_t *p = llr + lut_Addr[col] + lut_Pos[col] * NR_LDPC_ZMAX + z;
+    uint32_t v = 0;
+#pragma unroll
+    for (int i = 0; i < 8; i++)
+      v |= (uint32_t)(p[i] < 0) << (7 - i);
+    by[j] = (uint8_t)v;
+    out[j] = (uint8_t)v;
+  }
+  __syncthreads();
+  // CRC (zero init, no final xor: linear) in parallel: thread t takes chunk t of c bytes of the data, left-padded
+  // with zero bytes (no effect) to 256 c bytes; the chunk CRCs are merged pairwise, CRC(AB) = A advanced over
+  // len(B) zero bytes ^ CRC(B), the advance being the GF(2) matrix M (32 columns), squared at each level
+  __shared__ uint32_t v[256], M[2][32];
+  const uint32_t L = b->crc_len, nd = (b->crc_bits - L) >> 3, t = threadIdx.x;
+  const uint32_t c = (nd + 255) >> 8;
+  const int pad = (int)(c << 8) - (int)nd;
+  uint32_t crc = 0;
+  for (uint32_t j = 0; j < c; j++) {
+    const int pos = (int)(t * c + j) - pad;
+    crc = (crc << 8) ^ T[(pos >= 0 ? by[pos] : 0) ^ (crc >> 24)];
+  }
+  v[t] = crc;
+  if (t < 32) {
+    uint32_t col = 1u << t;
+    for (uint32_t j = 0; j < c; j++)
+      col = (col << 8) ^ T[col >> 24];
+    M[0][t] = col;
+  }
+  __syncthreads();
+  int m = 0;
+  for (uint32_t st = 1; st < 256; st <<= 1) {
+    if ((t & (2 * st - 1)) == 0) {
+      const uint32_t x = v[t];
+      uint32_t r = 0;
+      for (int k = 0; k < 32; k++)
+        r ^= (x >> k & 1) ? M[m][k] : 0;
+      v[t] = r ^ v[t + st];
+    }
+    if (t < 32) {
+      const uint32_t x = M[m][t];
+      uint32_t r = 0;
+      for (int k = 0; k < 32; k++)
+        r ^= (x >> k & 1) ? M[m][k] : 0;
+      M[m ^ 1][t] = r;
+    }
+    __syncthreads();
+    m ^= 1;
+  }
+  if (t == 0) {
+    uint32_t old = 0;
+    for (uint32_t i = 0; i < (L >> 3); i++)
+      old = (old << 8) | by[nd + i];
+    if ((v[0] >> (32 - L)) == old)
+      d_ldpc_seg_done[seg] = 1;
+  }
+}
+
+static void ldpc_check_enqueue(ldpc_cuda_bridge_t *buffer, int8_t *llrRes, uint32_t Z, uint32_t R, uint32_t n_segments, gpuStream_t *streams, int idx)
+{
+  ldpcCheckKernel_BG1<<<n_segments, 256, 0, streams[idx]>>>(buffer, llrRes, Z, R);
+  CHECK(gpuGetLastError());
+}
+
+extern "C" void ldpc_cuda_early_stop_init(void)
+{
+  gpuMalloc((void **)&ldpc_seg_done_dev, NR_LDPC_CUDA_MAX_SEG);
+  gpuMemset(ldpc_seg_done_dev, 0, NR_LDPC_CUDA_MAX_SEG);
+  gpuMemcpyToSymbol(d_ldpc_seg_done, &ldpc_seg_done_dev, sizeof(ldpc_seg_done_dev));
+}
+
 #define ENQUEUE_LDPC_DECODER_SEQUENCE(q_streams, q_idx) \
 do { \
     uint8_t ZcIdx = get_lut_col_index_host(Z); \
+    gpuMemsetAsync(ldpc_seg_done_dev, 0, n_segments, q_streams[q_idx]); \
     nrLDPC_llrPreProc_BG1_cuda_stream_core(buffer, numLLR, llrProcBuf, cnProcBuf, Z, ZcIdx, R, q_streams, q_idx); \
     if (R == 13) { \
         for (int i = 0; i <= numMaxIter; i++) { \
@@ -1182,6 +1326,7 @@ do { \
                 nrLDPC_bnProc_BG1_R13_cuda_stream_core_last(bnProcBuf, cnProcBuf, llrProcBuf, llrRes, n_segments, Z, ZcIdx, q_streams, q_idx); \
             else \
                 nrLDPC_bnProc_BG1_R13_cuda_stream_core(bnProcBuf, cnProcBuf, llrProcBuf, llrRes, n_segments, Z, ZcIdx, q_streams, q_idx); \
+            ldpc_check_enqueue(buffer, llrRes, Z, R, n_segments, q_streams, q_idx); \
         } \
     } else if (R == 23) { \
         for (int i = 0; i <= numMaxIter; i++) { \
@@ -1190,6 +1335,7 @@ do { \
                 nrLDPC_bnProc_BG1_R23_cuda_stream_core_last(bnProcBuf, cnProcBuf, llrProcBuf, llrRes, n_segments, Z, ZcIdx, q_streams, q_idx); \
             else \
                 nrLDPC_bnProc_BG1_R23_cuda_stream_core(bnProcBuf, cnProcBuf, llrProcBuf, llrRes, n_segments, Z, ZcIdx, q_streams, q_idx); \
+            ldpc_check_enqueue(buffer, llrRes, Z, R, n_segments, q_streams, q_idx); \
         } \
     } else if (R == 89) { \
         for (int i = 0; i <= numMaxIter; i++) { \
@@ -1198,6 +1344,7 @@ do { \
                 nrLDPC_bnProc_BG1_R89_cuda_stream_core_last(bnProcBuf, cnProcBuf, llrProcBuf, llrRes, n_segments, Z, ZcIdx, q_streams, q_idx); \
             else \
                 nrLDPC_bnProc_BG1_R89_cuda_stream_core(bnProcBuf, cnProcBuf, llrProcBuf, llrRes, n_segments, Z, ZcIdx, q_streams, q_idx); \
+            ldpc_check_enqueue(buffer, llrRes, Z, R, n_segments, q_streams, q_idx); \
         } \
     } \
     nrLDPC_OutPut_BG1_cuda_stream_core(llrRes, Z, R, outMode, buffer, numLLR, K, q_streams, q_idx); \

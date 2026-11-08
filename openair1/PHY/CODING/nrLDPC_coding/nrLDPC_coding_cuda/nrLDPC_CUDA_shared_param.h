@@ -72,6 +72,16 @@ typedef struct {
 typedef struct {
   int8_t* p_llr_ptr;
   int8_t* p_out_ptr;
+  // early termination: after each iteration the code blocks whose CRC (crc_poly, MSB-aligned as crcbit(), crc_len
+  // bits at the end of crc_bits) passes are done and skipped by the next kernels; crc_poly 0: no check
+  uint32_t crc_poly;
+  uint32_t crc_len;
+  uint32_t crc_bits;
 } ldpc_cuda_bridge_t;
+
+/// per code block "done" flags in device memory (NR_LDPC_CUDA_MAX_SEG), zeroed at the start of each decode
+#define NR_LDPC_CUDA_MAX_SEG 256
+/// code blocks per decode (the decoder buffers)
+#define NR_LDPC_CUDA_GROUP_SEG (MAX_NUM_NR_DLSCH_SEGMENTS_PER_LAYER * 4)
 
 #endif /* NRLDPC_CUDA_SHARED_PARAM_H_ */

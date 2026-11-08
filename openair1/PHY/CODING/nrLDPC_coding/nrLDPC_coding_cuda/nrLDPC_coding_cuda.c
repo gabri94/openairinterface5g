@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 #include <dlfcn.h>
+#include <string.h>
 
 #include "log.h"
 #include "openair1/PHY/CODING/nrLDPC_defs.h"
@@ -110,6 +111,9 @@ int nrLDPC_coding_encoder(nrLDPC_slot_encoding_parameters_t *slot_params)
 }
 
 void nr_process_decode_segment_cuda(nrLDPC_TB_decoding_parameters_t *);
+void nr_process_decode_group_cuda(nrLDPC_TB_decoding_parameters_t **tbs, int n);
+bool nr_ldpc_cuda_same_group(const nrLDPC_TB_decoding_parameters_t *a, const nrLDPC_TB_decoding_parameters_t *b);
+extern const int nr_ldpc_cuda_group_seg;
 int32_t nrLDPC_coding_decoder(nrLDPC_slot_decoding_parameters_t *slot_params)
 {
   // this should be the same as previous nrLDPC_coding_decoder() in nrLDPC_coding_segment_decoder.c
@@ -121,10 +125,35 @@ int32_t nrLDPC_coding_decoder(nrLDPC_slot_decoding_parameters_t *slot_params)
       .TBs = tbCPU,
   };
   int offset[32];
+  // the TBs the GPU decoder takes, in groups that share a decoder configuration (nr_ldpc_cuda_same_group): one
+  // decoder pass per group of up to nr_ldpc_cuda_group_seg code blocks
+  nrLDPC_TB_decoding_parameters_t *gpu_tb[slot_params->nb_TBs > 0 ? slot_params->nb_TBs : 1];
+  int n_gpu = 0;
+  for (int i = 0; i < slot_params->nb_TBs; i++) {
+    nrLDPC_TB_decoding_parameters_t *tbp = &slot_params->TBs[i];
+    if (tbp->Z >= 128 && tbp->BG == 1 && tbp->C <= nr_ldpc_cuda_group_seg)
+      gpu_tb[n_gpu++] = tbp;
+  }
+  bool used[n_gpu > 0 ? n_gpu : 1];
+  memset(used, 0, sizeof(used));
+  for (int i = 0; i < n_gpu; i++) {
+    if (used[i])
+      continue;
+    nrLDPC_TB_decoding_parameters_t *grp[n_gpu];
+    int n = 0, nseg = 0;
+    for (int j = i; j < n_gpu; j++) {
+      if (used[j] || !nr_ldpc_cuda_same_group(gpu_tb[i], gpu_tb[j]) || nseg + (int)gpu_tb[j]->C > nr_ldpc_cuda_group_seg)
+        continue;
+      used[j] = true;
+      grp[n++] = gpu_tb[j];
+      nseg += gpu_tb[j]->C;
+    }
+    nr_process_decode_group_cuda(grp, n);
+  }
   for (int pusch_id = 0; pusch_id < slot_params->nb_TBs; pusch_id++) {
     nrLDPC_TB_decoding_parameters_t *tbp = &slot_params->TBs[pusch_id];
-    if (tbp->Z >= 128 && tbp->BG == 1) {
-      nr_process_decode_segment_cuda(tbp);
+    if (tbp->Z >= 128 && tbp->BG == 1 && tbp->C <= nr_ldpc_cuda_group_seg) {
+      // decoded above
     } else {
       // this is not handled by CUDA, handle with CPU
       offset[cpu.nb_TBs] = pusch_id;
