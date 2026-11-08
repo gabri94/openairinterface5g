@@ -91,6 +91,7 @@ typedef cudaEvent_t    gpuEvent_t;
 #define gpuFree                hipFree
 #define gpuMemset              hipMemset
 #define gpuMemsetAsync         hipMemsetAsync
+#define gpuMemset2DAsync       hipMemset2DAsync
 #define gpuHostAlloc           hipHostAlloc
 #define gpuHostAllocMapped     hipHostAllocMapped
 #define gpuHostAllocDefault    hipHostAllocDefault
@@ -156,6 +157,7 @@ typedef cudaEvent_t    gpuEvent_t;
 #define gpuFree                cudaFree
 #define gpuMemset              cudaMemset
 #define gpuMemsetAsync         cudaMemsetAsync
+#define gpuMemset2DAsync       cudaMemset2DAsync
 #define gpuHostAlloc           cudaHostAlloc
 #define gpuHostAllocMapped     cudaHostAllocMapped
 #define gpuHostAllocDefault    cudaHostAllocDefault
