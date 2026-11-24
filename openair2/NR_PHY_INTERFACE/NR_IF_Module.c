@@ -523,4 +523,9 @@ void reset_sched_response(NR_Sched_Rsp_t *sched_response, int frame, int slot, i
   TX_req->SFN = frame;
   TX_req->Slot = slot;
   TX_req->Number_of_PDUs = 0;
+
+  nfapi_nr_bfw_cvi_request_t *DL_bfw_cvi_req = &sched_response->DL_bfw_cvi_req;
+  DL_bfw_cvi_req->sfn = frame;
+  DL_bfw_cvi_req->slot = slot;
+  DL_bfw_cvi_req->num_groups = 0;
 }

@@ -397,6 +397,12 @@ void handle_nr_srs_toa_vendor_ext_measurements(const module_id_t module_id,
 
 /// true if dynamic beamforming is on and L1 holds a current SRS estimate of the UE
 bool nr_srs_chest_ready(const nr_cell_sched_t *cell, const NR_UE_info_t *UE);
+/// fill the slot's DL_BFW_CVI.request from the stored SRS estimates (dynamic beamforming)
+void nr_sched_dynamic_bfw(gNB_MAC_INST *nr_mac,
+                          nr_cell_sched_t *cell,
+                          frame_t frame,
+                          slot_t slot,
+                          nfapi_nr_bfw_cvi_request_t *req);
 
 void find_SSB_and_RO_available(nr_cell_sched_t *cell);
 

@@ -80,6 +80,8 @@ typedef struct NR_Sched_Rsp {
   nfapi_nr_ul_dci_request_t UL_dci_req;
   /// Pointers to DL SDUs
   nfapi_nr_tx_data_request_t TX_req;
+  /// Aerial DL_BFW_CVI.request (dynamic beamforming)
+  nfapi_nr_bfw_cvi_request_t DL_bfw_cvi_req;
 } NR_Sched_Rsp_t;
 void reset_sched_response(NR_Sched_Rsp_t *sched_response, int frame, int slot, int module_id, int phy_id);
 

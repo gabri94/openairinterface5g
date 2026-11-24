@@ -242,6 +242,9 @@ void gNB_dlsch_ulsch_scheduler(module_id_t module_idP, const int cell_id, frame_
   nr_schedule_ue_spec(gNB, cell, frame, slot, &sched_info->DL_req, &sched_info->TX_req);
   stop_meas(&cell->schedule_dlsch);
 
+  // dynamic beamforming: weights for a PDSCH in the next slot
+  nr_sched_dynamic_bfw(gNB, cell, frame, slot, &sched_info->DL_bfw_cvi_req);
+
   nr_schedule_pucch(gNB, cell, frame, slot);
 
   /* Now that all UE UL scheduling is done: restore the reserved slot and run the

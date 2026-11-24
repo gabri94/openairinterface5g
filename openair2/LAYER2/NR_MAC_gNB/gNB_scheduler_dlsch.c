@@ -993,9 +993,17 @@ nfapi_nr_dl_tti_pdsch_pdu_rel15_t *prepare_pdsch_pdu(nfapi_nr_dl_tti_request_pdu
   pdsch_pdu->precodingAndBeamforming.num_prgs = 1;
   pdsch_pdu->precodingAndBeamforming.prg_size = pdsch_pdu->rbSize;
   pdsch_pdu->precodingAndBeamforming.prgs_list[0].pm_idx = sched_pdsch->pm_index;
-  pdsch_pdu->precodingAndBeamforming.dig_bf_interfaces = pdsch_pdu->param_v4.spatialStreamsCw[0].numSpatialStreamIndices;
-  for (int i = 0; i < pdsch_pdu->param_v4.spatialStreamsCw[0].numSpatialStreamIndices; i++)
-    pdsch_pdu->precodingAndBeamforming.prgs_list[0].dig_bf_interface_list[i].beam_idx = beam_index;
+  if (UE && nr_srs_chest_ready(cell, UE)) {
+    // Dynamic BFW: L1 applies the weights it computed from the UE's SRS estimate
+    // (requested by nr_sched_dynamic_bfw()), so send no BeamId: dig_bf_interfaces = 0,
+    // only pm_idx per PRG. Until the first estimate (RAR, Msg4) the PDSCH keeps the
+    // static beam below, otherwise it would go out unbeamformed and RA would fail.
+    pdsch_pdu->precodingAndBeamforming.dig_bf_interfaces = 0;
+  } else {
+    pdsch_pdu->precodingAndBeamforming.dig_bf_interfaces = pdsch_pdu->param_v4.spatialStreamsCw[0].numSpatialStreamIndices;
+    for (int i = 0; i < pdsch_pdu->param_v4.spatialStreamsCw[0].numSpatialStreamIndices; i++)
+      pdsch_pdu->precodingAndBeamforming.prgs_list[0].dig_bf_interface_list[i].beam_idx = beam_index;
+  }
   return pdsch_pdu;
 }
 
@@ -1413,6 +1421,58 @@ void post_process_dlsch(gNB_MAC_INST *nr_mac,
 
   generate_dl_mac_pdu(nr_mac, UE, harq, sched_pdsch, candidate, frame, slot);
   fill_dl_tx_request(pdsch, harq->transportBlock.buf, pduindex, TBS, frame, slot);
+}
+
+/* Request DL weights for every UE with a READY SRS estimate, once per slot.
+ * cuBB stores the weights of a DL_BFW_CVI.request in a slot-indexed ring and a
+ * PDSCH in slot N uses those of the request for slot N-1, which must be exactly
+ * one slot old. Requesting every slot for the current slot therefore covers a
+ * PDSCH in any slot and gives L1 a full slot to compute. The request does not
+ * consume the estimate: it stays READY until the next SRS PDU of the UE.
+ * All UEs go in one request: cuBB rejects a second request for the same slot.
+ * The request is sent with the other P7 messages of the slot. */
+void nr_sched_dynamic_bfw(gNB_MAC_INST *nr_mac,
+                          nr_cell_sched_t *cell,
+                          frame_t frame,
+                          slot_t slot,
+                          nfapi_nr_bfw_cvi_request_t *req)
+{
+  if (cell->beam_info.bf_method != BF_METHOD_DYNAMIC)
+    return;
+  req->header.phy_id = cell - nr_mac->cells;
+  req->sfn = frame;
+  req->slot = slot;
+  nfapi_nr_bfw_cvi_group_config_t *g = &req->group_list[0];
+  const NR_UE_DL_BWP_t *bwp = NULL;
+  int n_ue = 0;
+  UE_iterator (nr_mac->UE_info.connected_ue_list, UE) {
+    if (UE->pcell != cell || !nr_srs_chest_ready(cell, UE))
+      continue;
+    if (n_ue == NFAPI_NR_MAX_BFW_CVI_UES_PER_GROUP) {
+      LOG_W(NR_MAC, "%4d.%2d more than %d UEs with SRS estimates, not all get weights\n", frame, slot, n_ue);
+      break;
+    }
+    const nr_srs_chest_t *chest = &UE->srs_chest;
+    bwp = &UE->current_DL_BWP;
+    nfapi_nr_bfw_cvi_ue_config_t *u = &g->ue_list[n_ue++];
+    u->rnti = UE->rnti;
+    u->handle = UE->uid << 8; // SRS estimate buffer, as in nr_configure_srs()
+    u->pdu_idx = 0;
+    u->gnb_ant_idx_start = 0;
+    u->gnb_ant_idx_end = chest->num_gnb_ant ? chest->num_gnb_ant - 1 : 0;
+    u->num_ue_ants = chest->num_ue_ports ? min(chest->num_ue_ports, NFAPI_NR_MAX_BFW_CVI_UE_ANTS) : 1;
+    for (int a = 0; a < u->num_ue_ants; a++)
+      u->ue_ant_idx[a] = a;
+    LOG_D(NR_MAC, "%4d.%2d DL_BFW_CVI rnti %04x ant %d ports %d\n", frame, slot, UE->rnti, chest->num_gnb_ant, u->num_ue_ants);
+  }
+  if (n_ue == 0)
+    return;
+  g->rb_start = 0;
+  g->rb_size = bwp->BWPSize;
+  g->num_prgs = 1;
+  g->prg_size = bwp->BWPSize;
+  g->num_ues = n_ue;
+  req->num_groups = 1;
 }
 
 void nr_schedule_ue_spec(gNB_MAC_INST *gNB_mac,

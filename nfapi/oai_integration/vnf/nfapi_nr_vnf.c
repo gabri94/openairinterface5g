@@ -280,7 +280,11 @@ int phy_nr_slot_indication(nfapi_nr_slot_indication_scf_t *ind)
     sched_response.TX_req.header.phy_id = PHY_id;
     sched_response.UL_dci_req.header.phy_id = PHY_id;
 #ifdef ENABLE_AERIAL
+    sched_response.DL_bfw_cvi_req.header.phy_id = PHY_id;
 
+    // before the DL_TTI.request: cuBB stores the weights for the PDSCH of the next slot
+    if (sched_response.DL_bfw_cvi_req.num_groups > 0)
+      oai_fapi_dl_bfw_cvi_req(&sched_response.DL_bfw_cvi_req);
     bool send_slt_resp = false;
     if (sched_response.DL_req.dl_tti_request_body.nPDUs> 0) {
       oai_fapi_dl_tti_req(&sched_response.DL_req);
