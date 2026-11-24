@@ -863,6 +863,25 @@ typedef struct {
   reconfig_trigger_state_t trigger_info;
 } context_modification_info_t;
 
+/// State of the UE's SRS channel estimate in L1 (BF_METHOD_DYNAMIC). cuPHY keeps
+/// it in the per-cell buffer indexed by the UE's uid (SRS PDU handle bits 8-23).
+typedef enum {
+  /// no estimate stored yet
+  NR_SRS_CHEST_NONE = 0,
+  /// an SRS PDU is in flight: L1 holds the buffer until its SRS.indication
+  NR_SRS_CHEST_PENDING,
+  /// the latest estimate is stored and can be used for weight computation
+  NR_SRS_CHEST_READY,
+} nr_srs_chest_state_t;
+
+typedef struct {
+  nr_srs_chest_state_t state;
+  /// gNB antenna elements in the stored estimate
+  uint16_t num_gnb_ant;
+  /// UE SRS ports in the stored estimate
+  uint16_t num_ue_ports;
+} nr_srs_chest_t;
+
 /*! \brief UE list used by gNB to order UEs/CC for scheduling*/
 typedef struct NR_UE_info {
   rnti_t rnti;
@@ -871,6 +890,8 @@ typedef struct NR_UE_info {
   nr_csi_report_t csi_report_template[MAX_CSI_REPORTCONFIG];
   NR_UE_sched_ctrl_t UE_sched_ctrl;
   NR_sched_srs_t sched_srs;
+  /// SRS channel estimate held by L1 for dynamic beamforming
+  nr_srs_chest_t srs_chest;
   NR_UE_DL_BWP_t current_DL_BWP;
   NR_UE_UL_BWP_t current_UL_BWP;
   NR_UE_ServingCell_Info_t sc_info;
@@ -928,7 +949,8 @@ typedef enum {
   BF_METHOD_DAS,
   /// L2 signals beam IDs to L1, resolved through the digital beam table if there is one
   BF_METHOD_PREDEFINED,
-  /// SRS-based precoding, not implemented yet
+  /// static beams for control as in predefined, SRS-derived dynamic BF weights for
+  /// DLSCH/ULSCH (cuPHY BFW_CVI requests off the per-UE SRS chest buffers)
   BF_METHOD_DYNAMIC,
 } nr_bf_method_e;
 

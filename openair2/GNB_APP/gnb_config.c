@@ -1915,9 +1915,13 @@ void RCconfig_nr_macrlc(configmodule_interface_t *cfg, nr_cell_sched_t **out_cel
           // the beam index is the logical antenna port index, nothing to configure
           beam_info->beam_id_to_ru = true;
           break;
+        case BF_METHOD_DYNAMIC:
+          /* static beams for control, configured as in predefined; SRS-based precoding
+           * for DLSCH/ULSCH is applied on top by the scheduler */
         case BF_METHOD_PREDEFINED:
           // always explicit: a digital beam table usually holds many more beams than SSBs
-          AssertFatal(num_ssb_beams > 0, "predefined beamforming needs " MACRLC_SSB_BEAMS_LIST "\n");
+          AssertFatal(num_ssb_beams > 0, "%s beamforming needs " MACRLC_SSB_BEAMS_LIST "\n",
+                      *gpd(params, np, MACRLC_BF_METHOD)->strptr);
           config.ssb_beams = calloc_or_fail(num_ssb_beams, sizeof(*config.ssb_beams));
           for (int b = 0; b < num_ssb_beams; b++)
             config.ssb_beams[b] = gpd(params, np, MACRLC_SSB_BEAMS_LIST)->iptr[b];
@@ -1925,11 +1929,6 @@ void RCconfig_nr_macrlc(configmodule_interface_t *cfg, nr_cell_sched_t **out_cel
             check_ssb_beams_in_dbt(config.ssb_beams, num_ssb_beams, &config.bt);
           else
             beam_info->beam_id_to_ru = true;
-          break;
-        case BF_METHOD_DYNAMIC:
-          /* TODO static beams for control, SRS-based precoding for DLSCH/ULSCH; also has
-           * to disable CSI ports and DL precoding and take the DL layers from the SRS rank */
-          AssertFatal(false, MACRLC_BF_METHOD " \"dynamic\" is not implemented yet\n");
           break;
         default:
           AssertFatal(false, "unhandled " MACRLC_BF_METHOD " %d\n", beam_info->bf_method);
@@ -1939,6 +1938,10 @@ void RCconfig_nr_macrlc(configmodule_interface_t *cfg, nr_cell_sched_t **out_cel
        * precoding them, so the weights would silently have no effect. */
       AssertFatal(!have_dbt || NFAPI_MODE == NFAPI_MODE_AERIAL,
                   "a digital beam table is only supported with Aerial, the native L1 does not apply the weights\n");
+      /* Only Aerial computes weights from the SRS channel estimate: elsewhere the PDSCH
+       * would drop its beam once the UE has sounded SRS and go out without any weights. */
+      AssertFatal(beam_info->bf_method != BF_METHOD_DYNAMIC || NFAPI_MODE == NFAPI_MODE_AERIAL,
+                  MACRLC_BF_METHOD " \"dynamic\" is only supported with Aerial\n");
       /* An nFAPI PNF has no MACRLCs section, so RCconfig_NR_L1() cannot derive DAS there
        * and the split L1 would silently run without it. Beam IDs meant for the RU or the
        * fronthaul do travel in every FAPI PDU, so predefined without a table is fine. */

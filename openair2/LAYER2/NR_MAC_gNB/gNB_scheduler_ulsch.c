@@ -1609,6 +1609,13 @@ void handle_nr_srs_measurements(const module_id_t module_id,
                                                  &nr_srs_channel_iq_matrix,
                                                  sizeof(nfapi_nr_srs_normalized_channel_iq_matrix_t));
 
+      // L1 stored the UE's estimate in its buffer: weights can be requested from it
+      if (cell->beam_info.bf_method == BF_METHOD_DYNAMIC) {
+        UE->srs_chest.state = NR_SRS_CHEST_READY;
+        UE->srs_chest.num_gnb_ant = nr_srs_channel_iq_matrix.num_gnb_antenna_elements;
+        UE->srs_chest.num_ue_ports = nr_srs_channel_iq_matrix.num_ue_srs_ports;
+      }
+
 #ifdef SRS_IND_DEBUG
       LOG_I(NR_MAC, "nr_srs_channel_iq_matrix.normalized_iq_representation = %i\n", nr_srs_channel_iq_matrix.normalized_iq_representation);
       LOG_I(NR_MAC, "nr_srs_channel_iq_matrix.num_gnb_antenna_elements = %i\n", nr_srs_channel_iq_matrix.num_gnb_antenna_elements);

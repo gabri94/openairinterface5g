@@ -395,6 +395,9 @@ void handle_nr_srs_toa_vendor_ext_measurements(const module_id_t module_id,
                                                const int16_t *ta_offset_nsec,
                                                const rnti_t rnti);
 
+/// true if dynamic beamforming is on and L1 holds a current SRS estimate of the UE
+bool nr_srs_chest_ready(const nr_cell_sched_t *cell, const NR_UE_info_t *UE);
+
 void find_SSB_and_RO_available(nr_cell_sched_t *cell);
 
 NR_pdsch_dmrs_t get_dl_dmrs_params(const NR_ServingCellConfigCommon_t *scc,

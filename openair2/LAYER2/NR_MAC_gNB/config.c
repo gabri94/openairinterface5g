@@ -816,13 +816,18 @@ static void config_common(nr_cell_sched_t *cell, const nr_mac_config_t *config, 
   }
 #endif
 #ifdef ENABLE_AERIAL
-  // Reserve a per-cell pool of SRS channel-estimate buffers so cuPHY can
-  // cache estimates for dynamic-BFW weight requests. The value range is
-  // 0..1023; cuPHY enforces an upper bound (MAX_SRS_CHEST_BUFFERS_PER_CELL
-  // on its side) and falls back to a default if the TLV is absent.
+  // Per-cell pool of SRS channel-estimate buffers that cuPHY keeps for
+  // dynamic-BFW weight requests. Each UE uses the buffer indexed by its uid
+  // (see nr_configure_srs()), so a configured pool must cover every uid.
+  // 0 leaves the TLV out and cuBB uses its default pool (256 per cell).
+  AssertFatal(config->num_srs_chest_buffers == 0 || config->num_srs_chest_buffers >= MAX_MOBILES_PER_GNB,
+              "num_srs_chest_buffers %u is smaller than MAX_MOBILES_PER_GNB %d\n",
+              config->num_srs_chest_buffers,
+              MAX_MOBILES_PER_GNB);
   cfg->carrier_config.num_srs_chest_buffers.value = config->num_srs_chest_buffers;
   cfg->carrier_config.num_srs_chest_buffers.tl.tag = NFAPI_NR_CONFIG_NUM_SRS_CHEST_BUFFERS_TAG;
-  cfg->num_tlv++;
+  if (config->num_srs_chest_buffers != 0)
+    cfg->num_tlv++;
 #endif
   // Frame structure configuration
   uint8_t mu = frequencyInfoUL->scs_SpecificCarrierList.list.array[0]->subcarrierSpacing;

@@ -446,6 +446,11 @@ void nr_srs_ri_computation(const nfapi_nr_srs_normalized_channel_iq_matrix_t *nr
   }
 }
 
+bool nr_srs_chest_ready(const nr_cell_sched_t *cell, const NR_UE_info_t *UE)
+{
+  return cell->beam_info.bf_method == BF_METHOD_DYNAMIC && UE->srs_chest.state == NR_SRS_CHEST_READY;
+}
+
 static void nr_configure_srs(gNB_MAC_INST *nrmac,
                              nr_cell_sched_t *cell,
                              nfapi_nr_srs_pdu_t *srs_pdu,
@@ -466,6 +471,11 @@ static void nr_configure_srs(gNB_MAC_INST *nrmac,
 #else
   srs_pdu->handle = 0;
 #endif
+  if (cell->beam_info.bf_method == BF_METHOD_DYNAMIC) {
+    // L1 holds the UE's buffer from this SRS PDU until its SRS.indication and rejects
+    // weight requests on it meanwhile: stop using the estimate until the new one arrives
+    UE->srs_chest.state = NR_SRS_CHEST_PENDING;
+  }
   srs_pdu->bwp_size = current_BWP->BWPSize;
   srs_pdu->bwp_start = current_BWP->BWPStart;
   srs_pdu->subcarrier_spacing = current_BWP->scs;
